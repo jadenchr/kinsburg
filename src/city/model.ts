@@ -140,7 +140,7 @@ export function buildModel(data: CityData): Model {
     const res = pl.residentId ? residents.get(pl.residentId) : undefined;
     const seed = (pl.id * 2654435761) >>> 0;
     if (pl.kind === 'house') {
-      if (res) add({ kind: 'house', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: houseTop(res.houseStyle, res.perks) * 64 + 6, reach: 0, plot: pl, resident: res }, true);
+      if (res) add({ kind: 'house', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: houseTop(res.houseStyle, res.perks, res.level) * 64 + 6, reach: 0, plot: pl, resident: res }, true);
       else add({ kind: 'lot', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: 10, reach: 0, plot: pl }, true);
     } else {
       add({ kind: pl.kind, x: pl.x, y: pl.y, w: pl.w, h: pl.h, seed, height: pl.kind === 'civic' ? 72 : 46, reach: 4, plot: pl, resident: res }, true);

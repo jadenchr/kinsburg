@@ -382,3 +382,86 @@ dialog.kb-card[open] {
   .kb-notfound, dialog.kb-card[open] { animation: none; }
   #ui > .kb-splash, .kb-progress-fill, .kb-btn { transition: none; }
 }
+
+/* ── Town hall ───────────────────────────────────────────────────────── */
+.kb-town-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  background: var(--kb-surface-strong);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+}
+dialog.kb-town {
+  position: fixed;
+  inset: max(16px, env(safe-area-inset-top)) max(var(--kb-gutter), env(safe-area-inset-right)) auto auto;
+  margin: 0;
+  width: 400px;
+  max-width: calc(100% - 2 * var(--kb-gutter));
+  max-height: calc(100dvh - 32px);
+  padding: 20px 20px 0;
+  z-index: 3;
+  background: var(--kb-surface-strong);
+  overflow: hidden;
+}
+dialog.kb-town[open] { display: flex; flex-direction: column; gap: 8px; animation: kb-rise 200ms ease-out; }
+.kb-town-body { overflow: auto; padding-bottom: 20px; overscroll-behavior: contain; }
+.kb-town-section { padding: 12px 0; border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); scroll-margin-top: 8px; }
+.kb-town-section:first-child { border-top: 0; padding-top: 4px; }
+.kb-town-section h3 { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+.kb-town-section p { margin: 0 0 8px; font-size: 15px; line-height: 1.45; }
+.kb-town-note { display: block; color: var(--ink-soft); font-size: 14px; line-height: 1.4; }
+.kb-town-section a, .kb-card-nudge a, .kb-town-links a { color: inherit; font-weight: 700; text-underline-offset: 2px; }
+.kb-steps { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 4px; font-size: 15px; line-height: 1.45; }
+
+.kb-poll { display: grid; gap: 8px; }
+.kb-poll-q { font-weight: 700; }
+.kb-poll-options { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.kb-poll-option { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: 15px; }
+.kb-poll-count { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-size: 14px; }
+.kb-poll-bar {
+  grid-column: 1 / -1;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.kb-poll-bar::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--w); border-radius: inherit; background: var(--kb-primary); }
+.kb-poll-won .kb-poll-label { font-weight: 700; }
+
+.kb-founders { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 14px; font-weight: 600; }
+.kb-shop { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.kb-shop-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
+.kb-shop-item > div { display: grid; gap: 4px; font-size: 15px; }
+.kb-shop-item .kb-btn { min-height: 40px; padding: 0 12px; font-size: 14px; white-space: nowrap; }
+.kb-shop-soon { color: var(--ink-soft); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.kb-town-links { display: flex; gap: 16px; padding: 12px 0 0; border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); font-size: 14px; }
+
+/* card additions */
+.kb-btn-quiet { background: transparent; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; font-weight: 600; font-size: 14px; min-height: 40px; padding: 0 4px; justify-content: flex-start; }
+.kb-card-nudge { margin: 0; font-size: 14px; color: var(--ink-soft); }
+.kb-perk-follower { background: color-mix(in srgb, var(--kb-primary) 18%, transparent); color: var(--ink); }
+.kb-nf-how { margin-top: 8px; min-height: 40px; font-size: 14px; }
+
+@media (max-width: 899px), (max-height: 599px) {
+  dialog.kb-town {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: 78dvh;
+    padding: 16px var(--kb-gutter) 0;
+    border-radius: 22px 22px 0 0;
+    border-width: 1px 0 0;
+    background: color-mix(in srgb, var(--paper) 96%, transparent);
+  }
+  dialog.kb-town[open] { animation-name: kb-sheet; }
+  .kb-town-body { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) { dialog.kb-town[open] { animation: none; } }
+/* the header lets the map drag through; the town hall button opts back in, top right */
+#ui > .kb-top .kb-town-btn { position: absolute; top: 0; right: 0; pointer-events: auto; }
+@media (max-width: 899px), (max-height: 599px) {
+  #ui.kb-town-open > .kb-search { visibility: hidden; }
+}

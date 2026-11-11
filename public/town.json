@@ -1,0 +1,24 @@
+{
+  "day": 1,
+  "mayor": { "handle": "kinsburgtown", "sinceDay": 1 },
+  "polls": [
+    {
+      "id": "first-build",
+      "kind": "decision",
+      "question": "What should Kinsburg build next?",
+      "status": "open",
+      "closesAt": "2026-11-19T18:00:00Z",
+      "total": 214,
+      "options": [
+        { "key": "A", "label": "A pier for the lighthouse", "votes": 88 },
+        { "key": "B", "label": "A night market", "votes": 97 },
+        { "key": "C", "label": "A skate park", "votes": 29 }
+      ],
+      "result": null
+    }
+  ],
+  "sponsors": [{ "name": "Kinsburg", "message": "Your shop could be here. Message us", "url": null }],
+  "perkLinks": {},
+  "levelAt": [3, 10, 30],
+  "account": "kinsburgtown"
+}

@@ -2,6 +2,8 @@
 // Implemented in src/ui/index.ts.
 import type { CityData, Resident } from '../types';
 import type { SkyState } from '../theme';
+import type { TownInfo } from '../data/town';
+import type { TownSection } from './town';
 
 export interface CityStats {
   /** city day number, Day 1 = founding day */
@@ -28,6 +30,10 @@ export interface AppUI {
   showNotFound(handle: string, account: string): void;
   /** User submitted a search (raw text as typed). */
   onSearch(cb: (query: string) => void): void;
+  /** Mayor, votes, sponsors and perk links for the town hall panel and the card. */
+  setTown(town: TownInfo, data: CityData): void;
+  /** Open the town hall panel, optionally at a section. */
+  openTown(section?: TownSection): void;
   /** Card was closed by the user. */
   onCardClosed(cb: () => void): void;
 }

@@ -12,6 +12,7 @@ import { safeEqual } from './crypto';
 import { type Env, json, shardSize } from './env';
 import { pollComments } from './instagram';
 import { putMedia } from './media';
+import { townAdmin } from './town';
 
 export async function handleAdmin(req: Request, env: Env, path: string): Promise<Response> {
   if (!env.ADMIN_TOKEN) return json({ error: 'admin disabled (set ADMIN_TOKEN)' }, 503);
@@ -29,6 +30,9 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
     return json({ error: 'bad json' }, 400);
   }
   body ??= {};
+
+  const town = await townAdmin(env, path, body);
+  if (town) return town;
 
   switch (path) {
     case '/admin/join': {
@@ -84,13 +88,14 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
 
 async function stats(env: Env): Promise<Response> {
   const db = env.DB;
-  const [res, shards, meta, blocked, processed, stripe, events] = await db.batch<any>([
+  const [res, shards, meta, blocked, processed, stripe, orders, events] = await db.batch<any>([
     db.prepare('SELECT MAX(number) AS residents FROM residents'),
     db.prepare('SELECT shard, rev, count, length(body) AS bytes, updated_at FROM city_shards ORDER BY shard'),
     db.prepare(`SELECT key, value FROM meta WHERE key IN ('rev', 'demo', 'ig_token_refreshed_at', 'ig_token_expires_at')`),
     db.prepare('SELECT COUNT(*) AS n FROM blocked'),
     db.prepare('SELECT result, COUNT(*) AS n FROM processed_comments GROUP BY result'),
     db.prepare('SELECT status, COUNT(*) AS n FROM stripe_events GROUP BY status'),
+    db.prepare(`SELECT id, handle, item, status, at FROM orders WHERE status = 'new' ORDER BY id`),
     db.prepare('SELECT id, at, kind, handle, detail FROM events ORDER BY id DESC LIMIT 25'),
   ]);
   return json({
@@ -100,6 +105,7 @@ async function stats(env: Env): Promise<Response> {
     blocked: blocked.results[0]?.n ?? 0,
     processedComments: Object.fromEntries(processed.results.map((r: any) => [r.result, r.n])),
     stripeEvents: Object.fromEntries(stripe.results.map((r: any) => [r.status, r.n])),
+    ordersToFulfil: orders.results,
     recentEvents: events.results,
   });
 }

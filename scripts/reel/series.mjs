@@ -20,7 +20,7 @@ export function nameList(names, total, max = 3) {
   return `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}`;
 }
 
-/** @typedef {{ day:number, residents:number, newToday:number, names:string[], street:string|null, city:string }} CaptionStats */
+/** @typedef {{ day:number, residents:number, newToday:number, names:string[], street:string|null, city:string, newest?: { handle:string, job:string, street:string|null, number:number } | null }} CaptionStats */
 
 export const SERIES = {
   /** default: the nightly dusk-to-night time-lapse */
@@ -50,6 +50,43 @@ export const SERIES = {
     hashtags: ['#citybuilder', '#cozygames', '#browsergame', '#indiegame', '#gamedev'],
   },
 };
+
+// A new face every week: "resident of the day" puts one newcomer centre stage.
+SERIES['resident-of-the-day'] = {
+  title: () => 'Resident of the day',
+  subtitle: (s) => (s.newest ? `${s.newest.handle}, ${s.newest.job.toLowerCase()}` : `${n(s.residents)} residents`),
+  caption: (s) => [
+    s.newest
+      ? `Meet ${s.newest.handle}, resident #${n(s.newest.number)} of ${s.city}. ${article(s.newest.job)} ${s.newest.job.toLowerCase()}${s.newest.street ? ` on ${s.newest.street}` : ''}.`
+      : `Meet the newest neighbours of ${s.city}.`,
+    `${n(s.residents)} people live here now. Every house belongs to a real person.`,
+    'Want to be next? Comment MOVE IN and the city builds your house tonight.',
+  ],
+  hashtags: ['#citybuilder', '#cozygames', '#indiegame', '#community'],
+};
+
+// When the city grows into a new street, it gets its own post.
+SERIES['new-street'] = {
+  title: (s) => (s.street ? `New street: ${s.street}` : `Day ${s.day} in ${s.city}`),
+  subtitle: (s) => (s.newToday > 0 ? `+${n(s.newToday)} new ${s.newToday === 1 ? 'neighbour' : 'neighbours'}` : `${n(s.residents)} residents`),
+  caption: (s) => [
+    s.street ? `${s.city} grew a new street today: ${s.street}.` : `Day ${s.day} in ${s.city}.`,
+    s.names.length ? `First to move in: ${nameList(s.names, s.newToday)}.` : '',
+    'Comment MOVE IN for a house of your own.',
+  ],
+  hashtags: ['#citybuilder', '#cozygames', '#pixelcity', '#indiegame'],
+};
+
+const article = (w) => (/^[aeiou]/i.test(w) ? 'An' : 'A');
+
+/**
+ * Which series runs on a given day when none is chosen: mostly the nightly "Lights on", with
+ * a progress post, a resident of the day and a new-street post spread through the week.
+ */
+export function seriesForDate(isoDate) {
+  const weekday = new Date(isoDate + 'T12:00:00Z').getUTCDay(); // 0 Sunday
+  return ['day', 'lights-on', 'day', 'resident-of-the-day', 'lights-on', 'new-street', 'lights-on'][weekday];
+}
 
 export const MAX_CAPTION = 2200;
 export const MAX_HASHTAGS = 5;

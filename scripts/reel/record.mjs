@@ -38,7 +38,7 @@ import { dirname, join, resolve, extname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { parseArgs, run, sleep, probe, rgba, strHash, ambientArgs } from './lib.mjs';
-import { SERIES, buildCaption } from './series.mjs';
+import { SERIES, buildCaption, seriesForDate } from './series.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = parseArgs();
@@ -51,7 +51,8 @@ const DUR = Math.max(3, Math.min(900, Number(opt('duration', 'REEL_DURATION', '2
 const HOUR = opt('hour', 'REEL_HOUR', '');
 const FOCUS = opt('focus', null, '');
 const DAY = opt('day', null, '');
-const SERIES_ID = opt('series', 'REEL_SERIES', 'lights-on');
+// no --series: rotate through the week (scripts/reel/series.mjs seriesForDate)
+const SERIES_CHOSEN = opt('series', 'REEL_SERIES', null);
 const DATE = opt('date', null, new Date().toISOString().slice(0, 10));
 const OUT = resolve(ROOT, opt('out', null, 'out'));
 const FFMPEG = opt('ffmpeg', 'FFMPEG', 'ffmpeg');
@@ -68,6 +69,7 @@ const PORT = Number(opt('port', null, '4180'));
 const CHROME = opt('chrome', 'CHROME_PATH', '');
 let BASE = opt('url', 'KINSBURG_URL', '');
 
+const SERIES_ID = SERIES_CHOSEN ?? seriesForDate(DATE);
 if (!SERIES[SERIES_ID]) {
   console.error(`Unknown --series "${SERIES_ID}". Known: ${Object.keys(SERIES).join(', ')}`);
   process.exit(2);
@@ -240,7 +242,7 @@ async function main() {
 
   // ── text: overlay + caption ──
   const names = args.names === false ? [] : stats.newResidents.map((r) => r.handle);
-  const cs = { day: stats.day, residents: stats.residents, newToday: stats.newToday, names, street: stats.newestStreet, city: stats.city };
+  const cs = { day: stats.day, residents: stats.residents, newToday: stats.newToday, names, street: stats.newestStreet, city: stats.city, newest: args.names === false ? null : stats.newResidents[0] ?? null };
   const fill = (tpl) =>
     tpl
       .replaceAll('{day}', String(cs.day))

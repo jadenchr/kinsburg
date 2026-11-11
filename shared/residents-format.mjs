@@ -7,7 +7,8 @@
 //       shards: [{ n, count, rev }] }
 //   shard     GET /api/city/shard/<n>.json?v=<rev>         -> Row[]   (residents n*shardSize+1 ..)
 //   pack      GET /api/city/pack/<a>-<b>.json?v=<maxRev>   -> Row[][] (shards a..b, b-a < packSize)
-//   Row = [handle, number, joinedDay, jobIndex, houseStyle, perkMask]
+//   Row = [handle, number, joinedDay, jobIndex, houseStyle, perkMask, level?, follower?]
+//   (level 0..3 and follower 0|1 are omitted when 0, so older rows stay valid)
 //
 // A resident's plot depends only on (seed, number), so the browser rebuilds the full CityData
 // from this list with the shared layout engine (cityDataFromCompact).
@@ -27,6 +28,13 @@ export const JOBS = [
 
 /** Perk bit i = PERKS[i]: star 1, goldRoof 2, monument 4, street 8. */
 export const PERKS = ['star', 'goldRoof', 'monument', 'street'];
+/** Comments needed for each house level (1, 2, 3). */
+export const LEVEL_AT = [3, 10, 30];
+export function levelFor(engagement) {
+  let l = 0;
+  for (const t of LEVEL_AT) if (engagement >= t) l++;
+  return l;
+}
 export const PERK_BIT = { star: 1, goldRoof: 2, monument: 4, street: 8 };
 
 export function perksToMask(perks) {
@@ -89,13 +97,17 @@ export function cityDayAt(foundedISO, ms = Date.now()) {
 export function encodeResident(r) {
   const job = typeof r.job === 'number' ? r.job : JOBS.indexOf(r.job);
   if (job < 0) throw new Error(`unknown job ${r.job}`);
-  return [r.handle, r.number, r.joinedDay, job, r.houseStyle, typeof r.perks === 'number' ? r.perks : perksToMask(r.perks)];
+  const row = [r.handle, r.number, r.joinedDay, job, r.houseStyle, typeof r.perks === 'number' ? r.perks : perksToMask(r.perks)];
+  const level = r.level | 0, follower = r.follower ? 1 : 0;
+  if (level || follower) row.push(level);
+  if (follower) row.push(1);
+  return row;
 }
 
 /** Row -> Resident without plotId. */
 export function decodeRow(row) {
-  const [handle, number, joinedDay, job, houseStyle, mask] = row;
-  return { id: String(handle).toLowerCase(), handle, number, joinedDay, job: JOBS[job] ?? JOBS[0], houseStyle, perks: maskToPerks(mask) };
+  const [handle, number, joinedDay, job, houseStyle, mask, level = 0, follower = 0] = row;
+  return { id: String(handle).toLowerCase(), handle, number, joinedDay, job: JOBS[job] ?? JOBS[0], houseStyle, perks: maskToPerks(mask), level: Math.max(0, Math.min(3, level | 0)), follower: follower === 1 };
 }
 
 /** Shard index for a 1-based resident number. */

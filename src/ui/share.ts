@@ -151,7 +151,7 @@ export async function renderShareCard(resident: Resident, data: CityData, sky: S
   ctx.fill();
 
   ctx.save();
-  drawHouse(ctx, cx, cy, 440, { style: resident.houseStyle, perks: resident.perks, sky });
+  drawHouse(ctx, cx, cy, 440, { style: resident.houseStyle, perks: resident.perks, sky, level: resident.level });
   ctx.restore();
 
   // Text panel

@@ -92,7 +92,11 @@ export function demoResidents(count, seed = 'kinsburg') {
     seen.add(handle);
     const perks = pr < 0.03 ? [pk < 0.7 ? 'star' : pk < 0.9 ? 'goldRoof' : pk < 0.95 ? 'monument' : 'street'] : [];
     const number = out.length + 1;
-    out.push({ id: handle, handle, number, joinedDay: 0, job, houseStyle, perks });
+    // house level from a hash of the handle (not the RNG, so the existing city doesn't reshuffle):
+    // most houses are new, some have grown a floor or more from commenting
+    const lh = [...handle].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % 100;
+    const level = lh < 62 ? 0 : lh < 86 ? 1 : lh < 96 ? 2 : 3;
+    out.push({ id: handle, handle, number, joinedDay: 0, job, houseStyle, perks, ...(level ? { level } : {}) });
   }
   for (const r of out) r.joinedDay = dayFor(r.number, count);
   return out.slice(0, count);

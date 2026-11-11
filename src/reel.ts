@@ -19,7 +19,7 @@
 //                           renderFrame(t), captureFrame(t, type?, quality?) }
 import type { CityData, Resident } from './types';
 import type { CityView, ReelCamera, ReelControl, ReelTarget } from './city/api';
-import { COLORS, skyAt, type SkyState } from './theme';
+import { COLORS, FONTS, alpha, skyAt, type SkyState } from './theme';
 
 export interface ReelStats {
   city: string;
@@ -169,10 +169,65 @@ function buildPath(rc: ReelControl, focus: ReelTarget[], D: number, W: number, H
   return keys;
 }
 
+// ── poster (?reel=1&poster=1): the whole town on one print, the buyer's house circled ──
+function posterPath(rc: ReelControl, W: number, H: number): Key[] {
+  const b = rc.homesBounds();
+  const zoom = Math.min(W / ((b.maxX - b.minX) * 1.06), (H * 0.76) / ((b.maxY - b.minY) * 1.06));
+  // the town sits in the upper ~80%; the bottom is for the title
+  const cam: ReelCamera = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 + (H * 0.09) / zoom, zoom };
+  return [{ t: 0, cam, move: 'hold' }];
+}
+
+function drawPosterMarks(canvas: HTMLCanvasElement, cam: ReelCamera, targets: ReelTarget[], data: CityData, people: Resident[], W: number, H: number) {
+  const ctx = canvas.getContext('2d')!;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const u = W / 1000; // poster unit
+  // circle each house
+  targets.forEach((p, i) => {
+    const x = W / 2 + (p.x - cam.x) * cam.zoom;
+    const y = H / 2 + (p.y - p.height * 0.4 - cam.y) * cam.zoom;
+    const r = Math.max(14 * u, p.height * cam.zoom * 1.6);
+    ctx.lineWidth = 3.2 * u;
+    ctx.strokeStyle = COLORS.gold;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    const who = people[i];
+    if (who) {
+      ctx.font = `700 ${15 * u}px ${FONTS.ui}`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 5 * u;
+      ctx.strokeStyle = alpha(COLORS.ink, 0.85);
+      ctx.strokeText('@' + who.handle, x, y - r - 8 * u);
+      ctx.fillStyle = COLORS.paper;
+      ctx.fillText('@' + who.handle, x, y - r - 8 * u);
+    }
+  });
+  // title block
+  const top = H * 0.86;
+  ctx.fillStyle = alpha(COLORS.nightPaper, 0.82);
+  ctx.fillRect(0, top - 20 * u, W, H - top + 20 * u);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = COLORS.nightInk;
+  ctx.font = `${62 * u}px ${FONTS.display}`;
+  ctx.fillText(data.name, W / 2, top + 48 * u);
+  const who = people[0];
+  ctx.font = `600 ${20 * u}px ${FONTS.ui}`;
+  ctx.fillStyle = COLORS.nightInkSoft;
+  const line = who ? `Home of @${who.handle}, resident #${who.number.toLocaleString('en-US')}` : `${data.residents.length.toLocaleString('en-US')} residents`;
+  ctx.fillText(line, W / 2, top + 84 * u);
+  ctx.font = `500 ${14 * u}px ${FONTS.ui}`;
+  ctx.fillText(`kinsburg.com     @${data.account}`, W / 2, top + 112 * u);
+  ctx.restore();
+}
+
 // ── entry point (called from main.ts only when ?reel is present) ────────────
 export function startReel(city: CityView, data: CityData, params: URLSearchParams): void {
-  const W = Math.round(num(params.get('w'), 1080, 16, 4096));
-  const H = Math.round(num(params.get('h'), 1920, 16, 4096));
+  // posters are print size (e.g. 3600×4800 = 12×16 in at 300 dpi)
+  const W = Math.round(num(params.get('w'), 1080, 16, 8192));
+  const H = Math.round(num(params.get('h'), 1920, 16, 8192));
+  const poster = params.has('poster');
   const D = num(params.get('duration'), 20, 3, 900);
   const fps = Math.round(num(params.get('fps'), 30, 1, 60));
   const [hourFrom, hourTo] = parseHours(params.get('hour'));
@@ -215,7 +270,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
   };
 
   const focusTargets = stats.focus.map((id) => rc.resident(id)).filter((p): p is ReelTarget => !!p);
-  const keys = buildPath(rc, focusTargets, D, W, H);
+  const keys = poster ? posterPath(rc, W, H) : buildPath(rc, focusTargets, D, W, H);
 
   // Time of day: most of the change happens while the camera is wide, so the viewer
   // watches the whole town switch its lights on; then it settles into night.
@@ -229,7 +284,9 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
   const canvas = document.getElementById('city') as HTMLCanvasElement;
   const renderFrame = (t: number): Promise<void> => {
     const tt = Math.max(0, Math.min(D, Number(t) || 0));
-    rc.render({ t: tt, sky: skyForHour(hourAt(tt)), camera: cameraAt(keys, tt, W), highlights: stats.focus });
+    const camera = cameraAt(keys, tt, W);
+    rc.render({ t: tt, sky: skyForHour(hourAt(tt)), camera, highlights: stats.focus });
+    if (poster) drawPosterMarks(canvas, camera, focusTargets, data, stats.focus.map((id) => byId.get(id)!).filter(Boolean), W, H);
     return Promise.resolve();
   };
 

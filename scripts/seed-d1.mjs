@@ -47,9 +47,9 @@ const sql = [
 for (let i = 0; i < residents.length; i += 200) {
   const vals = residents.slice(i, i + 200).map((r) => {
     const mask = r.perks.reduce((m, p) => m | PERK_BIT[p], 0);
-    return `(${r.number}, ${q(r.handle)}, ${r.joinedDay}, ${JOBS.indexOf(r.job)}, ${r.houseStyle}, ${mask}, 'seed')`;
+    return `(${r.number}, ${q(r.handle)}, ${r.joinedDay}, ${JOBS.indexOf(r.job)}, ${r.houseStyle}, ${mask}, ${r.level | 0}, 'seed')`;
   });
-  sql.push(`INSERT INTO residents (number, handle, joined_day, job, house_style, perks, source) VALUES\n${vals.join(',\n')};`);
+  sql.push(`INSERT INTO residents (number, handle, joined_day, job, house_style, perks, level, source) VALUES\n${vals.join(',\n')};`);
 }
 // D1 caps one SQL statement at 100 KB, so long shard bodies are appended in pieces.
 encodeShards(residents, shardSize).forEach((rows, s) => {

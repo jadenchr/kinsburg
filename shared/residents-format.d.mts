@@ -9,7 +9,9 @@ export declare const PERKS: readonly Perk[];
 export declare const PERK_BIT: Readonly<Record<Perk, number>>;
 
 /** [handle, number, joinedDay, jobIndex, houseStyle, perkMask] */
-export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number];
+export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number, level?: number, follower?: number];
+export declare const LEVEL_AT: readonly number[];
+export declare function levelFor(engagement: number): number;
 
 export interface ShardMeta {
   n: number;

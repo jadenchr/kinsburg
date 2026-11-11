@@ -61,9 +61,17 @@ interface ResidentRow {
   job: number;
   house_style: number;
   perks: number;
+  level?: number;
+  follower?: number;
 }
-export const toRow = (r: ResidentRow): Row => [r.handle, r.number, r.joined_day, r.job, r.house_style, r.perks];
-const RESIDENT_COLS = 'handle, number, joined_day, job, house_style, perks';
+export const toRow = (r: ResidentRow): Row => {
+  const row: Row = [r.handle, r.number, r.joined_day, r.job, r.house_style, r.perks];
+  const level = r.level ?? 0, follower = r.follower ? 1 : 0;
+  if (level || follower) row.push(level); // optional tail, omitted when 0 (see shared/residents-format)
+  if (follower) row.push(1);
+  return row;
+};
+const RESIDENT_COLS = 'handle, number, joined_day, job, house_style, perks, level, follower';
 
 const INSERT_RESIDENT = `
 INSERT INTO residents (number, handle, joined_day, job, house_style, perks, source, ig_user_id)

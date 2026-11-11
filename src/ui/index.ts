@@ -7,6 +7,8 @@ import { FONTS, skyAt, type SkyState } from '../theme';
 import { ICONS } from './icons';
 import { addressOf } from './lookup';
 import { renderShareCard, shareOrDownload } from './share';
+import { buyUrl, createTownPanel } from './town';
+import type { TownInfo } from '../data/town';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -46,7 +48,9 @@ export const createUI: CreateUI = (root) => {
   const demoChip = el('li', { class: 'kb-chip kb-chip-quiet', hidden: '' });
   demoChip.textContent = 'Sample residents';
   stats.append(dayChip, popChip, clockChip, demoChip);
-  top.append(wordmark, stats);
+  const townBtn = el('button', { type: 'button', class: 'kb-btn kb-btn-secondary kb-town-btn' }, ICONS.flag);
+  townBtn.append(document.createTextNode('Town hall'));
+  top.append(wordmark, stats, townBtn);
 
   // ── Search ─────────────────────────────────────────────────────────────
   const form = el('form', { class: 'kb-search', role: 'search' });
@@ -89,9 +93,15 @@ export const createUI: CreateUI = (root) => {
   const copyBtn = el('button', { type: 'button', class: 'kb-btn kb-btn-secondary' });
   copyBtn.textContent = 'Copy link';
   actions.append(shareBtn, copyBtn);
+  // supporting the city: a gold star for this house (only when the shop is open)
+  const starLink = el('a', { class: 'kb-btn kb-btn-quiet kb-card-buy', target: '_blank', rel: 'noopener', hidden: '' });
+  // following is encouraged, never required
+  const nudge = el('p', { class: 'kb-card-nudge', hidden: '' });
   // announces copy/share results to screen readers (button text alone may not be read)
   const cardStatus = el('p', { class: 'kb-vh', role: 'status', 'aria-live': 'polite' });
-  card.append(cardHead, cardNumber, facts, perks, actions, cardStatus);
+  card.append(cardHead, cardNumber, facts, perks, actions, starLink, nudge, cardStatus);
+  const town = createTownPanel();
+  let townInfo: TownInfo | null = null;
 
   // ── Splash ─────────────────────────────────────────────────────────────
   const splash = el('div', { class: 'kb-splash' });
@@ -120,7 +130,18 @@ export const createUI: CreateUI = (root) => {
   splashInner.append(splashMark, loading, errorBox);
   splash.append(splashInner);
 
-  root.append(top, notFound, form, card, splash);
+  root.append(top, notFound, form, card, town.dialog, splash);
+  townBtn.addEventListener('click', () => openTown());
+  town.onClosed(() => {
+    root.classList.remove('kb-town-open');
+    townBtn.focus({ preventScroll: true });
+  });
+  // on phones the sheet covers the search bar; take the bar out while it's open
+  const openTown = (section?: Parameters<typeof town.open>[0]) => {
+    if (card.open) card.close();
+    root.classList.add('kb-town-open');
+    town.open(section);
+  };
 
   // ── Behaviour ──────────────────────────────────────────────────────────
   const hideNotFound = () => {
@@ -246,6 +267,8 @@ export const createUI: CreateUI = (root) => {
     if (address) fact(ICONS.pin, 'Address: ', address);
     fact(ICONS.work, 'Job: ', resident.job);
     fact(ICONS.key, '', `Moved in on Day ${resident.joinedDay.toLocaleString()}`);
+    const storeys = 1 + (resident.level ?? 0);
+    if (storeys > 1) fact(ICONS.roof, '', `${storeys}-storey house`);
 
     perks.replaceChildren();
     const has = (p: string) => resident.perks.includes(p as Resident['perks'][number]);
@@ -257,6 +280,20 @@ export const createUI: CreateUI = (root) => {
     if (has('monument') || has('street')) perk('kb-perk-founder', ICONS.flag, 'Founder');
     if (has('star')) perk('kb-perk-gold', ICONS.star, 'Gold star');
     if (has('goldRoof')) perk('kb-perk-gold', ICONS.roof, 'Golden roof');
+    if (resident.follower) perk('kb-perk-follower', ICONS.key, 'Follower');
+
+    const account = townInfo?.account ?? data.account;
+    const star = townInfo?.perkLinks.star;
+    starLink.hidden = !star || has('star');
+    if (star) {
+      starLink.href = buyUrl(star.url, resident.handle);
+      starLink.textContent = star.price ? `Give this house a gold star, ${star.price}` : 'Give this house a gold star';
+    }
+    nudge.hidden = !!resident.follower;
+    nudge.replaceChildren(document.createTextNode('Follow '));
+    const ig = el('a', { href: `https://instagram.com/${account}`, target: '_blank', rel: 'noopener' });
+    ig.textContent = `@${account}`;
+    nudge.append(ig, document.createTextNode(' to watch this house grow.'));
     perks.hidden = perks.childElementCount === 0;
 
     copyBtn.textContent = 'Copy link';
@@ -264,6 +301,14 @@ export const createUI: CreateUI = (root) => {
   }
 
   const ui: AppUI = {
+    setTown(t, data) {
+      townInfo = t;
+      town.update(t, data);
+      if (current) fillCard(current.resident, current.data);
+    },
+    openTown(section) {
+      openTown(section);
+    },
     setLoading(p) {
       const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
       progressFill.style.transform = `scaleX(${pct / 100})`;
@@ -326,8 +371,14 @@ export const createUI: CreateUI = (root) => {
       });
       link.textContent = `@${account}`;
       body.append('Comment MOVE IN on ', link, "'s latest post and we'll build your home.");
+      const how = el('button', { type: 'button', class: 'kb-btn kb-btn-secondary kb-nf-how' });
+      how.textContent = 'How to move in';
+      how.addEventListener('click', () => {
+        notFound.hidden = true;
+        ui.openTown('move-in');
+      });
       notFound.hidden = false;
-      nfLive.append(title, body);
+      nfLive.append(title, body, how);
     },
     onSearch(cb) {
       searchCbs.push(cb);

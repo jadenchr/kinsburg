@@ -11,6 +11,8 @@ export interface HouseOptions {
   sky: SkyState;
   /** draw a highlight ring under the house */
   highlighted?: boolean;
+  /** 0..3 extra storeys, earned by commenting (Resident.level) */
+  level?: number;
 }
 
 /**
@@ -34,11 +36,14 @@ const E = 0.34; // footprint half extent (tile units)
 const O = 0.07; // eave overhang
 const WALL_H = [0.3, 0.3, 0.38];
 const ROOF_H = [0.25, 0.2, 0];
+/** height of one extra storey (tile units) */
+const FLOOR_H = 0.19;
+const floors = (level: number | undefined) => Math.max(0, Math.min(3, Math.floor(level ?? 0)));
 
 /** Height of the house top above the ground, in tile widths (for bounds / hit tests). */
-export function houseTop(style: number, perks: readonly Perk[]): number {
+export function houseTop(style: number, perks: readonly Perk[], level = 0): number {
   const sh = houseShape(style);
-  const top = sh === 2 ? WALL_H[2] + 0.25 : WALL_H[sh] + ROOF_H[sh];
+  const top = (sh === 2 ? WALL_H[2] + 0.25 : WALL_H[sh] + ROOF_H[sh]) + floors(level) * FLOOR_H;
   return perks.includes('star') ? top + 0.3 : top;
 }
 
@@ -89,7 +94,8 @@ export function drawHouseEx(
   const gold = opts.perks.includes('goldRoof');
   const wall = wallMat(sky, WALLS[Math.floor(style / ROOFS.length) % WALLS.length]);
   const roof = material(sky, gold ? COLORS.gold : ROOFS[style % ROOFS.length]);
-  const H = WALL_H[shape];
+  const extra = floors(opts.level);
+  const H = WALL_H[shape] + extra * FLOOR_H;
   const R = ROOF_H[shape];
 
   if (opts.highlighted) drawRing(ctx, p, 0.62);
@@ -131,11 +137,15 @@ export function drawHouseEx(
   const on = glow > 0.05 + 0.5 * hash(seed, 91);
   const lw = shape === 2 ? 0.14 : 0.11;
   const lz: [number, number] = shape === 2 ? [0.15, 0.28] : [0.11, 0.22];
-  const leftWins: Win[] = [[-0.26, -0.26 + lw, lz[0], lz[1]]];
-  const rightWins: Win[] = [
-    [0.09, 0.09 + lw, lz[0], lz[1]],
-    [-0.22, -0.22 + lw, lz[0], lz[1]],
-  ];
+  const leftWins: Win[] = [];
+  const rightWins: Win[] = [];
+  // one row of windows per storey; upper storeys get a window above the door too
+  for (let f = 0; f <= extra; f++) {
+    const z0 = lz[0] + f * FLOOR_H, z1 = lz[1] + f * FLOOR_H;
+    leftWins.push([-0.26, -0.26 + lw, z0, z1]);
+    rightWins.push([0.09, 0.09 + lw, z0, z1], [-0.22, -0.22 + lw, z0, z1]);
+    if (f > 0) leftWins.push([0.04, 0.04 + lw, z0, z1]);
+  }
   if (detail >= 1) {
     fillPoly(ctx, p, [0.03, E, 0, 0.16, E, 0, 0.16, E, 0.19, 0.03, E, 0.19], mix(roof.base, pal.edge, 0.4));
     let i = 0;

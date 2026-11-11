@@ -1,0 +1,17 @@
+/* Policy pages: plain, readable, same fonts and colours as the city (day palette from src/theme.ts). */
+:root { --ink: #18233a; --ink-soft: #4a5672; --paper: #ffffff; --sky: #cfe9f7; --accent: #1f6f8b; }
+@media (prefers-color-scheme: dark) {
+  :root { --ink: #eef1fb; --ink-soft: #b4bcd8; --paper: #151d3b; --sky: #0b1430; --accent: #ffc95c; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--sky); color: var(--ink); font: 17px/1.6 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; }
+article { background: var(--paper); border-radius: 18px; padding: 28px 24px 32px; }
+.mark { font-family: 'Bagel Fat One', system-ui, sans-serif; font-size: 28px; color: var(--ink); text-decoration: none; }
+h1 { font-size: 28px; line-height: 1.2; margin: 16px 0 4px; }
+h2 { font-size: 19px; margin: 28px 0 4px; }
+p, li { color: var(--ink); }
+.meta { color: var(--ink-soft); margin: 0 0 8px; font-size: 15px; }
+a { color: var(--accent); text-underline-offset: 2px; }
+nav { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 16px; font-size: 15px; }
+.fill { background: color-mix(in srgb, var(--accent) 18%, transparent); padding: 0 4px; border-radius: 4px; }

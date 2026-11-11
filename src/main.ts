@@ -4,6 +4,7 @@ import { skyAt, COLORS, type SkyState } from './theme';
 import { createCityView } from './city';
 import { createUI } from './ui';
 import { loadCity } from './data/load';
+import { loadTown } from './data/town';
 
 const canvas = document.getElementById('city') as HTMLCanvasElement;
 const ui = createUI(document.getElementById('ui') as HTMLElement);
@@ -74,8 +75,19 @@ async function start() {
   city.setData(data);
   // ── Reel mode hook (?reel=1): owned by src/reel.ts / scripts/reel/. Hides the UI and hands
   // the canvas to a deterministic frame renderer for the daily Reel. Never loaded otherwise.
-  if (params.has('reel')) return void import('./reel').then((m) => m.startReel(city, data, params));
+  // Sponsors' billboards appear in the reel too (part of what they pay for).
+  if (params.has('reel')) {
+    const town = params.has('poster') ? null : await loadTown(data.demo);
+    if (town) city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
+    return void import('./reel').then((m) => m.startReel(city, data, params));
+  }
   ui.setStats({ day: cityDay(data), residents: data.residents.length, demo: data.demo });
+  // town hall: mayor, votes, sponsors (billboards) and perk links. Loads after the map is up.
+  loadTown(data.demo).then((town) => {
+    city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
+    ui.setTown(town, data);
+    if (params.get('town') !== null) ui.openTown((params.get('town') || undefined) as 'move-in' | 'vote' | 'support' | undefined);
+  });
   tick();
   ui.ready();
 

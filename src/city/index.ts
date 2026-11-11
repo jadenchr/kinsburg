@@ -13,9 +13,9 @@
 // • Reel mode (enterReel, used only behind ?reel=1) turns the loop off and renders
 //   complete frames on demand: no time budget, every visible chunk built, all motion
 //   driven by the reel's own clock.
-import type { CreateCityView, ReelControl, ReelFrame, ReelTarget } from './api';
+import type { Billboard, CreateCityView, ReelControl, ReelFrame, ReelTarget } from './api';
 import type { Resident } from '../types';
-import { COLORS, alpha, type SkyState } from '../theme';
+import { COLORS, FONTS, alpha, mix, type SkyState } from '../theme';
 import { Camera, attachInput } from './camera';
 import { drawGround, eachTile, makeLook, type Look, type Region } from './ground';
 import { HH, HW, hash } from './iso';
@@ -53,6 +53,7 @@ export const createCityView: CreateCityView = (canvas) => {
   const cam = new Camera();
   const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   let reelMode = false;
+  let billboards: Billboard[] = [];
   const reduced = () => !reelMode && motionQuery.matches;
   motionQuery.addEventListener?.('change', onMotion);
 
@@ -356,7 +357,62 @@ export const createCityView: CreateCityView = (canvas) => {
       if (o.maxX + 300 < v.minX || o.minX - 300 > v.maxX || o.maxY + 300 < v.minY || o.minY - 300 > v.maxY) continue;
       drawAnimated(ctx, o, sky, t, S);
     }
+    drawBillboard(t);
     for (const i of rings) drawHighlight(m.objs[i], ringMs, S);
+  }
+
+  /** Sponsor billboard on the town square, left of the town hall. Lit from below at night. */
+  function drawBillboard(t: number) {
+    const th = model?.townhall;
+    if (!billboards.length || !th || !sky) return;
+    const b = billboards[Math.floor(t / 8000) % billboards.length];
+    const gx = th.x - 1.2, gy = th.y + th.h - 0.4;
+    const x = (gx - gy) * HW, y = (gx + gy) * HH + HH;
+    const pal = sky.palette;
+    const w = 124, h = 52, post = 34;
+    const top = y - post - h;
+    ctx.save();
+    // posts
+    ctx.fillStyle = mix(pal.edge, pal.wallShade, 0.3);
+    ctx.fillRect(x - w / 2 + 14, y - post - 2, 4, post + 2);
+    ctx.fillRect(x + w / 2 - 18, y - post - 2, 4, post + 2);
+    // panel
+    const lit = sky.glow;
+    ctx.fillStyle = mix(COLORS.paper, COLORS.nightPaper, Math.min(0.55, sky.darkness * 0.55));
+    ctx.strokeStyle = mix(pal.edge, COLORS.ink, 0.4);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2, top, w, h, 6);
+    ctx.fill();
+    ctx.stroke();
+    if (lit > 0.05) {
+      ctx.fillStyle = alpha(COLORS.glow, 0.18 * lit);
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2, top, w, h, 6);
+      ctx.fill();
+    }
+    // text: message (wrapped to two lines) + sponsor name
+    const ink = sky.darkness > 0.5 ? COLORS.nightInk : COLORS.ink;
+    ctx.fillStyle = ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `700 11px ${FONTS.ui}`;
+    const words = b.message.split(/\s+/);
+    const lines: string[] = [];
+    let cur = '';
+    for (const wd of words) {
+      const next = cur ? cur + ' ' + wd : wd;
+      if (ctx.measureText(next).width > w - 14 && cur) {
+        lines.push(cur);
+        cur = wd;
+      } else cur = next;
+    }
+    if (cur) lines.push(cur);
+    lines.slice(0, 2).forEach((ln, i) => ctx.fillText(ln, x, top + 18 + i * 13, w - 12));
+    ctx.font = `600 8.5px ${FONTS.ui}`;
+    ctx.fillStyle = alpha(ink, 0.7);
+    ctx.fillText(b.name, x, top + h - 7, w - 12);
+    ctx.restore();
   }
 
   /** `ms`: time since the highlight started (drives the pulse). */
@@ -530,6 +586,10 @@ export const createCityView: CreateCityView = (canvas) => {
       dirty = true;
     },
     focusResident: focus,
+    setBillboards(lines) {
+      billboards = lines.slice(0, 4);
+      dirty = true;
+    },
     clearHighlight() {
       highlight = -1;
       dirty = true;

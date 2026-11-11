@@ -1,6 +1,7 @@
 // Kinsburg Worker. Static files (dist/) are served by Workers Static Assets before this code runs;
 // only unmatched paths reach fetch() below:
 //   GET  /api/city/manifest.json          compact manifest (max-age=60 + edge cache)
+//   GET  /api/city/town.json              mayor, polls with tallies, sponsors, perk links (max-age=60)
 //   GET  /api/city/shard/<n>.json?v=rev   one shard, Row[] (immutable when v matches)
 //   GET  /api/city/pack/<a>-<b>.json?v=   shards a..b as Row[][] (immutable when v matches)
 //   GET|POST /webhooks/instagram          Meta webhook (verify handshake + signed comments)
@@ -14,6 +15,7 @@ import { type Env, json, log, packSize } from './env';
 import { handleInstagramWebhook, pollComments, refreshToken } from './instagram';
 import { handleStripeWebhook } from './stripe';
 import { serveMedia } from './media';
+import { getTown } from './town';
 
 const SHORT = 'public, max-age=60';
 const IMMUTABLE = 'public, max-age=31536000, immutable';
@@ -51,6 +53,9 @@ async function cityApi(req: Request, env: Env, ctx: ExecutionContext, url: URL):
       const m = await getManifest(env);
       return body(JSON.stringify(m), SHORT, `"m${m.rev}-${m.count}"`);
     });
+  }
+  if (p === '/api/city/town.json') {
+    return edgeCached(req, env, ctx, `${url.origin}${p}`, async () => body(JSON.stringify(await getTown(env)), SHORT));
   }
   let m = /^\/api\/city\/shard\/(\d+)\.json$/.exec(p);
   if (m) {

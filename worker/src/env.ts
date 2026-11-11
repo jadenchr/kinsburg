@@ -19,6 +19,10 @@ export interface Env {
   IG_MEDIA_LIMIT: string;
   IG_REPLY_ENABLED: string;
   IG_REPLY_MAX_PER_RUN: string;
+  /** "true" after App Review: join / move out by DM, with the follower badge */
+  IG_DM_ENABLED?: string;
+  /** "true" after App Review: one private reply to each commenter who moves in */
+  IG_PRIVATE_REPLY_ENABLED?: string;
   STRIPE_PERKS: string | Record<string, string>;
   STRIPE_HANDLE_FIELD_KEY: string;
 

@@ -721,6 +721,8 @@ export function toCityData(city, residents, { name = 'Kinsburg', account = 'kins
     residents: residents.map((r) => ({
       id: r.id, handle: r.handle, number: r.number, joinedDay: r.joinedDay, job: r.job,
       plotId: r.plotId, houseStyle: r.houseStyle, perks: r.perks,
+      ...(r.level ? { level: r.level } : {}),
+      ...(r.follower ? { follower: true } : {}),
     })),
     demo,
   };

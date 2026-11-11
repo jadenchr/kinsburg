@@ -4,6 +4,7 @@
 import { matchesMoveIn } from '../../shared/residents-format.mjs';
 import { eventStmt, joinMany, writeSnapshots, healSnapshots, type JoinResult, type JoinSource } from './city';
 import { verifyMetaSignature } from './crypto';
+import { closeDuePolls, handleDms, privateReply, processTownComments } from './town';
 import { type Env, intVar, json, log } from './env';
 
 export interface IgComment {
@@ -31,7 +32,7 @@ export async function getToken(env: Env): Promise<string | undefined> {
   return r?.value || env.IG_ACCESS_TOKEN || undefined;
 }
 
-class IgClient {
+export class IgClient {
   fetches = 0;
   constructor(private base: string, private token: string) {}
 
@@ -119,6 +120,13 @@ export async function processComments(env: Env, comments: IgComment[], source: J
     if (r.status === 'joined') report.joined.push(r.handle);
     else if (r.status === 'exists') report.exists++;
     else report.rejected.push(`${r.handle}:${r.status}`);
+    if (r.status === 'joined' && env.IG_PRIVATE_REPLY_ENABLED === 'true' && client) {
+      try {
+        await privateReply(env, client, fresh[i].id, r.handle, r.number);
+      } catch (err) {
+        log('private_reply_failed', { comment: fresh[i].id, error: String(err) });
+      }
+    }
     if (replyOn && r.status === 'joined' && report.replies < maxReplies) {
       try {
         await client.post(`${fresh[i].id}/replies`, { message: replyText(env, r.handle, r.number) });
@@ -184,8 +192,10 @@ export async function pollComments(env: Env) {
     }
   }
   const report = await processComments(env, comments, 'comment', ig);
+  const town = await processTownComments(env, comments);
+  const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, ...report };
+  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, pollsClosed: closed, ...report };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
@@ -210,6 +220,7 @@ export async function handleInstagramWebhook(req: Request, env: Env): Promise<Re
   let payload: any;
   try { payload = JSON.parse(raw); } catch { return new Response('bad json', { status: 400 }); }
   const comments: IgComment[] = [];
+  const messaging: any[] = [];
   for (const entry of Array.isArray(payload?.entry) ? payload.entry : []) {
     for (const ch of Array.isArray(entry?.changes) ? entry.changes : []) {
       const v = ch?.value;
@@ -218,19 +229,15 @@ export async function handleInstagramWebhook(req: Request, env: Env): Promise<Re
         comments.push({ id: v.id, text: String(v.text ?? ''), username: v.from.username, mediaId: String(v.media?.id ?? ''), igUserId: v.from.id ? String(v.from.id) : undefined });
       }
     }
-    if (Array.isArray(entry?.messaging) && entry.messaging.length) {
-      // TODO Phase 2 (needs instagram_business_manage_messages + Advanced Access): DM join.
-      // DM payloads carry only sender.id (IGSID), not a username: look the user up
-      // (GET /<IGSID>?fields=username), then joinMany([{ raw: username, source: 'dm', igUserId }])
-      // and answer with one message (POST /<IG_USER_ID>/messages).
-      log('ig_dm_ignored', { count: entry.messaging.length });
-    }
+    if (Array.isArray(entry?.messaging)) messaging.push(...entry.messaging);
   }
   try {
     const token = await getToken(env);
     const client = token ? new IgClient(env.IG_API_BASE, token) : undefined;
     const report = await processComments(env, comments, 'webhook', client);
-    return json({ ok: true, ...report });
+    const town = await processTownComments(env, comments);
+    const dms = messaging.length ? await handleDms(env, client, messaging) : null;
+    return json({ ok: true, ...report, town, dms });
   } catch (err) {
     log('ig_webhook_failed', { error: String(err) });
     return new Response('retry later', { status: 500 }); // Meta retries for up to 36 h

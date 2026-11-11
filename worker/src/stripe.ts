@@ -20,7 +20,17 @@ function handleFrom(env: Env, s: any): string | null {
     fields.find((x) => /instagram/i.test(String(x?.label?.custom ?? '')));
   const v = f?.text?.value ?? f?.dropdown?.value ?? null;
   if (typeof v === 'string' && v.trim()) return v;
-  return typeof s?.client_reference_id === 'string' && s.client_reference_id ? s.client_reference_id : null;
+  // the site sends the handle with "." as "-" (Stripe allows only letters, digits, - and _ here;
+  // Instagram handles never contain "-")
+  return typeof s?.client_reference_id === 'string' && s.client_reference_id ? s.client_reference_id.replace(/-/g, '.') : null;
+}
+
+/** "poster" when the purchase maps to the printed city poster. */
+function itemFrom(env: Env, s: any): string | null {
+  if (s?.metadata?.item === 'poster') return 'poster';
+  const map = perkMap(env);
+  for (const k of [s?.payment_link, s?.metadata?.price, s?.metadata?.product]) if (typeof k === 'string' && map[k] === 'poster') return 'poster';
+  return null;
 }
 
 function perkFrom(env: Env, s: any): Perk | null {
@@ -65,6 +75,16 @@ export async function handleStripeWebhook(req: Request, env: Env): Promise<Respo
       return json({ ok: true, pending: true }); // async_payment_succeeded will follow
     }
     const rawHandle = handleFrom(env, s);
+    if (itemFrom(env, s) === 'poster') {
+      // printed poster: a person fulfils it (scripts/poster.mjs makes the print file)
+      const { handle } = checkHandle(rawHandle ?? '');
+      await db.batch([
+        db.prepare('INSERT INTO orders (event_id, handle, item, detail) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(event_id) DO NOTHING').bind(ev.id, handle || null, 'poster', JSON.stringify({ session: s.id, shipping: s.shipping_details ?? s.collected_information?.shipping_details ?? null })),
+        finish('done', handle || null, 'poster', { order: 'poster' }),
+        eventStmt(env, 'order', handle || null, { item: 'poster', event: ev.id }),
+      ]);
+      return json({ ok: true, order: 'poster' });
+    }
     const perk = perkFrom(env, s);
     const { handle, bad } = checkHandle(rawHandle ?? '');
     if (!rawHandle || bad || !perk) {

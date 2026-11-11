@@ -11,6 +11,8 @@ export interface CityView {
   focusResident(id: string): void;
   /** Remove the highlight (e.g. when the card closes). */
   clearHighlight(): void;
+  /** Sponsor billboards on the town square (rotates every 8 s when there are several). */
+  setBillboards(lines: Billboard[]): void;
   /** Called when the user taps/clicks a house (resident) or empty ground (null). */
   onSelect(cb: (resident: Resident | null) => void): void;
   /**
@@ -20,6 +22,13 @@ export interface CityView {
    */
   enterReel(width: number, height: number): ReelControl;
   destroy(): void;
+}
+
+export interface Billboard {
+  /** sponsor name, small */
+  name: string;
+  /** the big line */
+  message: string;
 }
 
 /** Camera in world px: the world point at the frame centre, and device px per world px. */

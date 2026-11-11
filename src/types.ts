@@ -40,6 +40,10 @@ export interface Resident {
   /** 0..11 — picks roof colour, wall colour and roof shape deterministically. */
   houseStyle: number;
   perks: Perk[];
+  /** 0..3 — the house gains a floor as the resident comments more (see LEVEL_AT). */
+  level?: number;
+  /** true once we know they follow @kinsburgtown (only knowable from DMs). Badge only, never required. */
+  follower?: boolean;
 }
 
 export interface Street {

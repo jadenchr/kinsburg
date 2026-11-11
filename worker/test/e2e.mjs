@@ -31,7 +31,8 @@ const SECRETS = {
 const VARS = {
   IG_API_BASE: `http://127.0.0.1:${MOCK_PORT}/v27.0`,
   EDGE_CACHE: 'false',
-  STRIPE_PERKS: JSON.stringify({ plink_star: 'star', plink_gold: 'goldRoof' }),
+  STRIPE_PERKS: JSON.stringify({ plink_star: 'star', plink_gold: 'goldRoof', plink_poster: 'poster' }),
+  IG_DM_ENABLED: 'true',
 };
 
 let failures = 0;
@@ -53,10 +54,22 @@ const COMMENTS = {
       { id: 'c5', text: 'Move   In please', username: 'bad..handle' },
     ],
   ],
-  m2: [[{ id: 'c6', text: 'MOVE IN', username: 'new_person1' }]], // same person again
+  m2: [
+    [
+      { id: 'c6', text: 'MOVE IN', username: 'new_person1' }, // same person again
+      // the vote post: residents vote by letter / candidate; third_person also gets chatty
+      { id: 'v1', text: 'vote A', username: 'second.person' },
+      { id: 'v2', text: 'B!', username: 'third_person' },
+      { id: 'v3', text: 'A', username: 'third_person' }, // second vote: ignored
+      { id: 'v4', text: 'A', username: 'lurker' }, // not a resident: ignored
+      { id: 'v5', text: 'love this town', username: 'third_person' },
+      { id: 'v6', text: 'so cozy', username: 'third_person' },
+    ],
+  ],
 };
 let mockHits = 0;
 let published = null;
+const dmReplies = [];
 const mock = createServer((req, res) => mockHandler(req, res).catch((e) => { console.log('  mock error:', e); res.writeHead(500); res.end(); }));
 async function mockHandler(req, res) {
   mockHits++;
@@ -83,6 +96,14 @@ async function mockHandler(req, res) {
     return send({ id: 'pub1' });
   }
   if (u.pathname === '/v27.0/pub1') return send({ permalink: 'https://instagram.com/reel/test' });
+  // DMs: profile lookup and replies
+  const PROFILES = { '555': { username: 'dm_person', is_user_follow_business: true }, '556': { username: 'via_webhook', is_user_follow_business: false } };
+  const prof = /^\/v27\.0\/(55\d)$/.exec(u.pathname);
+  if (prof && PROFILES[prof[1]]) return send(PROFILES[prof[1]]);
+  if (u.pathname === `/v27.0/${SECRETS.IG_USER_ID}/messages`) {
+    dmReplies.push({ recipient: JSON.parse(u.searchParams.get('recipient')), text: JSON.parse(u.searchParams.get('message')).text });
+    return send({ message_id: 'mid' });
+  }
   if (u.pathname === `/v27.0/${SECRETS.IG_USER_ID}/media`) return send({ data: [{ id: 'm1' }, { id: 'm2' }] });
   const m = /^\/v27\.0\/(m\d)\/comments$/.exec(u.pathname);
   if (m && COMMENTS[m[1]]) {
@@ -170,6 +191,11 @@ try {
   ok(j.status === 'exists', 'second join is a no-op', j);
   ok((await admin('/admin/join', { handle: 'no spaces allowed' })).status === 400, 'invalid handle rejected');
 
+  console.log('\ntown: poll setup');
+  r = await admin('/admin/poll', { id: 'first-mayor', kind: 'election', question: 'Who should be mayor?', mediaId: 'm2', closesISO: new Date(Date.now() + 86400000).toISOString(),
+    options: [{ key: 'A', label: '@new_person1', handle: 'new_person1' }, { key: 'B', label: '@third_person', handle: 'third_person' }] });
+  ok(r.status === 200, 'election created', await r.clone().json());
+
   console.log('\ncomment poller (cron)');
   const before = mockHits;
   r = await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`);
@@ -186,6 +212,24 @@ try {
   ({ data } = await loadCity());
   ok(data.residents.length === 54, 'second poll adds nobody (comments remembered)', data.residents.length);
 
+  console.log('\ntown: votes, mayor, growing houses');
+  let town = await (await fetch(`${BASE}/api/city/town.json`)).json();
+  let poll = town.polls.find((p) => p.id === 'first-mayor');
+  ok(poll && poll.total === 2 && poll.options.find((o) => o.key === 'A').votes === 1 && poll.options.find((o) => o.key === 'B').votes === 1, 'one vote per resident, non-residents and second votes ignored', poll);
+  const tp = data.residents.find((x) => x.id === 'third_person');
+  ok(tp?.level === 1, 'third_person grew a storey after 4 comments', tp);
+  ok(!data.residents.find((x) => x.id === 'second.person')?.level, 'two comments are not enough for a storey yet');
+  r = await admin('/admin/poll/close', { id: 'first-mayor' });
+  j = await r.json();
+  ok(j.winner === 'A', 'tie goes to the option listed first', j);
+  town = await (await fetch(`${BASE}/api/city/town.json`)).json();
+  ok(town.mayor?.handle === 'new_person1', 'election winner becomes mayor', town.mayor);
+  ok((await admin('/admin/sponsor', { name: 'Bean There', message: 'Fresh coffee on Kinsfolk Avenue', url: 'https://example.com', days: 7 })).status === 200, 'sponsor added');
+  ok((await admin('/admin/town', { perkLinks: { star: { url: 'https://buy.stripe.com/test_star', price: '$5' }, goldRoof: { url: 'http://evil.example', price: '$1' } } })).status === 200, 'perk links saved');
+  town = await (await fetch(`${BASE}/api/city/town.json`)).json();
+  ok(town.sponsors.some((x) => x.name === 'Bean There'), 'sponsor listed in town.json');
+  ok(town.perkLinks.star?.price === '$5' && !town.perkLinks.goldRoof, 'only real Stripe links are accepted', town.perkLinks);
+
   console.log('\nStripe webhook');
   r = await stripeEvent('evt_1', { id: 'cs_1', payment_status: 'paid', payment_link: 'plink_gold', custom_fields: [{ key: 'instagramhandle', text: { value: '@Third_Person' } }] });
   ok(r.status === 200, 'signed event accepted', r.status);
@@ -198,6 +242,12 @@ try {
   ({ data } = await loadCity());
   const buyer = data.residents.find((x) => x.id === 'brand.new.buyer');
   ok(r.status === 200 && buyer?.perks.includes('star'), 'buyer who was not a resident is moved in with a star', buyer);
+  r = await stripeEvent('evt_5', { id: 'cs_5', payment_status: 'paid', payment_link: 'plink_star', client_reference_id: 'dotted-buyer' });
+  ({ data } = await loadCity());
+  ok(r.status === 200 && data.residents.find((x) => x.id === 'dotted.buyer')?.perks.includes('star'), 'handle sent as client_reference_id (dots as dashes) gets the perk');
+  r = await stripeEvent('evt_6', { id: 'cs_6', payment_status: 'paid', payment_link: 'plink_poster', custom_fields: [{ key: 'instagramhandle', text: { value: 'third_person' } }] });
+  const st6 = await (await admin('/admin/stats')).json();
+  ok(r.status === 200 && st6.ordersToFulfil?.some((o) => o.item === 'poster' && o.handle === 'third_person'), 'poster purchase becomes an order to fulfil', st6.ordersToFulfil);
   r = await stripeEvent('evt_3', { id: 'cs_3', payment_status: 'paid', payment_link: 'plink_star', custom_fields: [{ key: 'instagramhandle', text: { value: 'x' } }] }, 'whsec_wrong');
   ok(r.status === 400, 'badly signed event rejected', r.status);
   r = await stripeEvent('evt_4', { id: 'cs_4', payment_status: 'paid', payment_link: 'plink_star' }, SECRETS.STRIPE_WEBHOOK_SECRET, Math.floor(Date.now() / 1000) - 3600);
@@ -216,6 +266,21 @@ try {
   ok(data.residents.some((x) => x.id === 'via_webhook'), 'webhook commenter moved in');
   r = await fetch(`${BASE}/webhooks/instagram`, { method: 'POST', headers: { 'x-hub-signature-256': 'sha256=00', 'content-type': 'application/json' }, body: hook });
   ok(r.status === 401 || r.status === 403, 'badly signed webhook rejected', r.status);
+
+  console.log('\nDMs (after App Review)');
+  const dm = (sender, text) => {
+    const b = JSON.stringify({ object: 'instagram', entry: [{ id: SECRETS.IG_USER_ID, time: 1, messaging: [{ sender: { id: sender }, recipient: { id: SECRETS.IG_USER_ID }, message: { mid: 'm' + sender, text } }] }] });
+    return fetch(`${BASE}/webhooks/instagram`, { method: 'POST', headers: { 'x-hub-signature-256': 'sha256=' + createHmac('sha256', SECRETS.IG_APP_SECRET).update(b).digest('hex'), 'content-type': 'application/json' }, body: b });
+  };
+  r = await dm('555', 'MOVE IN please');
+  ({ data } = await loadCity());
+  const dmp = data.residents.find((x) => x.id === 'dm_person');
+  ok(r.status === 200 && dmp?.follower === true, 'DM MOVE IN joins and records the follower badge', dmp);
+  ok(dmReplies.some((x) => x.recipient.id === '555' && x.text.includes('/?r=dm_person') && !x.text.includes('Follow')), 'follower gets their link without a follow nudge', dmReplies);
+  r = await dm('556', 'MOVE OUT');
+  ({ data } = await loadCity());
+  ok(r.status === 200 && !data.residents.some((x) => x.id === 'via_webhook') && data.residents.some((x) => x.id.startsWith('vacant.lot.')), 'DM MOVE OUT removes the name and leaves a vacant lot');
+  try { validateCityData(data); ok(true, 'city still valid after moving out'); } catch (e) { ok(false, 'city still valid after moving out', String(e)); }
 
   console.log('\nReel hosting + publishing');
   const video = Buffer.alloc(200_000, 7);

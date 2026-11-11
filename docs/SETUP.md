@@ -6,6 +6,12 @@ Do the steps in order. When a step says "send me", paste the value into our chat
 
 ---
 
+## 0. Fill in the policy pages (5 minutes)
+
+Stripe and Meta both check that you have a privacy policy, terms and a refund policy. They're written: [privacy](../public/privacy/index.html), [terms](../public/terms/index.html) and [refunds](../public/refunds/index.html). Each has highlighted blanks: your full name or business name, your country and a contact email. Send me those three things and I'll fill them in.
+
+They're a sensible starting point, not legal advice. If you start making real money, have a local lawyer look them over.
+
 ## 1. Instagram (5 minutes)
 
 1. In the Instagram app: **Settings → Account type and tools → Switch to professional account → Creator**.
@@ -108,14 +114,15 @@ The token lasts about 60 days. The Worker renews it every Monday on its own.
 1. Create an account at stripe.com as an individual or sole proprietor, and finish identity and bank verification.
 2. **Product catalogue → Add product**, once per perk. Suggested starting prices: Gold star $5, Golden roof $12, Name on the Founders Monument $25, Name a street $50 (limit 1 per street).
 3. For each product, create a **Payment link**. Under **Advanced → Add custom field**, add a required **Text** field labelled `Instagram @handle`. The Worker finds the field by the word "Instagram" in its label.
-4. Send me each Payment Link's id (it starts with `plink_`) and which perk it is. I'll put them in `STRIPE_PERKS`.
-5. **Developers → Webhooks → Add endpoint**: URL `https://kinsburg.com/webhooks/stripe`, event `checkout.session.completed`. Copy the **signing secret** and store it:
+4. Add one more product: **City poster** (suggested $39). In its Payment Link, turn on **Collect shipping address**.
+5. Send me each Payment Link's id (it starts with `plink_`) and which perk it is. I'll put them in `STRIPE_PERKS` and switch the shop on. The command is in [RUNNING.md](RUNNING.md), "Put perks on sale".
+6. **Developers → Webhooks → Add endpoint**: URL `https://kinsburg.com/webhooks/stripe`, event `checkout.session.completed`. Copy the **signing secret** and store it:
 
    ```bash
    npx wrangler secret put STRIPE_WEBHOOK_SECRET
    ```
 
-6. Buy the $5 star yourself with your own handle. Your house should get a gold star within a minute. Refund it afterwards in Stripe.
+7. Buy the $5 star yourself with your own handle. Your house should get a gold star within a minute. Refund it afterwards in Stripe.
 
 ## 7. GitHub secrets for the automations (10 minutes)
 

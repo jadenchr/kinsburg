@@ -46,6 +46,9 @@
     "IG_MEDIA_LIMIT": "10",
     "IG_REPLY_ENABLED": "false",
     "IG_REPLY_MAX_PER_RUN": "5",
+    // Turn these on only after Meta grants Advanced Access (App Review):
+    "IG_DM_ENABLED": "false",            // MOVE IN / MOVE OUT by DM, follower badge
+    "IG_PRIVATE_REPLY_ENABLED": "false", // one private "your house is ready" reply per new resident
     // Stripe Payment Link id (plink_...) -> perk. A session's metadata.perk wins if set.
     "STRIPE_PERKS": "{}",
     "STRIPE_HANDLE_FIELD_KEY": "instagramhandle"
