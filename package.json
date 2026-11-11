@@ -1,0 +1,20 @@
+{
+  "name": "kinsburg",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "demo-data": "node scripts/generate-demo.mjs",
+    "test:worker": "node worker/test/e2e.mjs",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p worker"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "wrangler": "4.156.0"
+  }
+}

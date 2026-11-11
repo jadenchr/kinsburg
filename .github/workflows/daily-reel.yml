@@ -1,0 +1,62 @@
+# Records the daily Kinsburg Reel from the live city and posts it to @kinsburgtown.
+# Runs every day at 13:17 UTC (off the top of the hour, when GitHub's scheduler is less busy),
+# or by hand from the Actions tab ("Run workflow").
+# Needs repository secrets ADMIN_TOKEN, IG_ACCESS_TOKEN, IG_USER_ID and the variable KINSBURG_URL.
+# Without the Instagram secrets it still records and keeps the MP4 as a downloadable artifact.
+name: Daily reel
+
+on:
+  schedule:
+    - cron: '17 13 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Record only, do not post'
+        type: boolean
+        default: true
+      hour:
+        description: 'Time of day, e.g. 21.5, or a time-lapse range like 18.2-21.7 (blank = default)'
+        required: false
+
+concurrency: { group: daily-reel, cancel-in-progress: false }
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KINSBURG_URL: ${{ vars.KINSBURG_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Check Chrome
+        run: google-chrome --version
+      - name: Record
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.hour }}" ]; then ARGS="--hour ${{ inputs.hour }}"; fi
+          if [ -z "$KINSBURG_URL" ]; then npx vite build; fi
+          node scripts/reel/record.mjs $ARGS ${KINSBURG_URL:+--url "$KINSBURG_URL"}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reel
+          path: out/
+          retention-days: 14
+      - name: Publish to Instagram
+        if: ${{ github.event_name == 'schedule' || inputs.dry_run == false }}
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: |
+          if [ -z "$IG_ACCESS_TOKEN" ] || [ -z "$IG_USER_ID" ] || [ -z "$ADMIN_TOKEN" ] || [ -z "$KINSBURG_URL" ]; then
+            echo "Instagram secrets or KINSBURG_URL not set yet: recorded only (see the reel artifact)."
+            node scripts/reel/publish.mjs
+          else
+            node scripts/reel/publish.mjs --publish
+          fi

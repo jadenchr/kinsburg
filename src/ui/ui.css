@@ -1,0 +1,384 @@
+/* Kinsburg UI. Colours come only from the sky variables main.ts sets on :root
+   (--ink --ink-soft --paper --accent --accent-ink --gold --glow --danger --focus
+   --sky-top --sky-bottom). Spacing is on a 4px grid. */
+
+:root {
+  --kb-gutter: 16px;
+  --kb-surface: color-mix(in srgb, var(--paper) 85%, transparent);
+  --kb-surface-strong: color-mix(in srgb, var(--paper) 90%, transparent);
+  --kb-chip: color-mix(in srgb, var(--paper) 72%, transparent);
+  --kb-hairline: color-mix(in srgb, var(--ink) 12%, transparent);
+  /* the one shadow: tinted from the sky, deepened toward ink */
+  --kb-shadow: 0 12px 32px -8px color-mix(in srgb, color-mix(in srgb, var(--sky-top) 55%, var(--ink)) 38%, transparent),
+    0 2px 6px -2px color-mix(in srgb, color-mix(in srgb, var(--sky-top) 40%, var(--ink)) 22%, transparent);
+  --kb-primary: var(--accent);
+  --kb-primary-ink: var(--accent-ink);
+  --kb-blur: blur(12px) saturate(1.2);
+  --kb-safe-top: max(12px, env(safe-area-inset-top));
+  --kb-safe-bottom: max(16px, env(safe-area-inset-bottom));
+  --kb-search-h: 56px;
+  color-scheme: light;
+}
+html[data-ui='dark'] {
+  /* at night the primary action takes the warm window glow */
+  --kb-primary: var(--glow);
+  --kb-primary-ink: var(--paper);
+  --kb-chip: color-mix(in srgb, var(--paper) 66%, transparent);
+  color-scheme: dark;
+}
+
+#ui [hidden] { display: none !important; }
+
+.kb-vh, .kb-offscreen {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#ui :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.kb-icon { flex: none; display: block; }
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+#ui > .kb-top {
+  position: fixed;
+  top: var(--kb-safe-top);
+  left: max(var(--kb-gutter), env(safe-area-inset-left));
+  right: max(var(--kb-gutter), env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none; /* nothing here is interactive; let the map drag through */
+}
+.kb-wordmark {
+  margin: 0;
+  font-family: var(--kb-font-display);
+  font-weight: 400;
+  font-size: clamp(28px, 7vw, 36px);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--paper) 60%, transparent),
+    0 0 18px color-mix(in srgb, var(--paper) 55%, transparent);
+}
+.kb-stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--kb-chip);
+  -webkit-backdrop-filter: var(--kb-blur);
+  backdrop-filter: var(--kb-blur);
+  border: 1px solid var(--kb-hairline);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.kb-chip-clock { padding-left: 8px; }
+.kb-clock-icon { display: inline-flex; color: var(--gold); }
+.kb-chip-night .kb-clock-icon { color: var(--glow); }
+.kb-chip-quiet {
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--ink) 28%, transparent);
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+html[data-ui='light'] .kb-chip-quiet { background: color-mix(in srgb, var(--paper) 82%, transparent); }
+@media (max-width: 359px) {
+  .kb-chip-clock { display: none; }
+}
+
+/* ── Shared surfaces and controls ────────────────────────────────────── */
+.kb-panel {
+  background: var(--kb-surface);
+  -webkit-backdrop-filter: var(--kb-blur);
+  backdrop-filter: var(--kb-blur);
+  border: 1px solid var(--kb-hairline);
+  border-radius: 18px;
+  box-shadow: var(--kb-shadow);
+  color: var(--ink);
+}
+
+.kb-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+.kb-btn:active { transform: translateY(1px); }
+.kb-btn:disabled { cursor: progress; opacity: 0.8; }
+.kb-btn-primary {
+  background: var(--kb-primary);
+  color: var(--kb-primary-ink);
+}
+.kb-btn-primary:hover { background: color-mix(in srgb, var(--kb-primary) 88%, var(--ink)); }
+.kb-btn-secondary {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-color: color-mix(in srgb, var(--ink) 16%, transparent);
+  color: var(--ink);
+}
+.kb-btn-secondary:hover { background: color-mix(in srgb, var(--ink) 11%, transparent); }
+
+.kb-icon-btn {
+  appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: -4px -8px -4px 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.kb-icon-btn:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+
+/* ── Search ──────────────────────────────────────────────────────────── */
+.kb-search {
+  position: fixed;
+  left: 50%;
+  bottom: var(--kb-safe-bottom);
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 2 * var(--kb-gutter)));
+  height: var(--kb-search-h);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--kb-surface-strong);
+  -webkit-backdrop-filter: var(--kb-blur);
+  backdrop-filter: var(--kb-blur);
+  border: 1px solid var(--kb-hairline);
+  box-shadow: var(--kb-shadow);
+}
+.kb-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* 16px keeps iOS from zooming */
+  font-weight: 500;
+}
+.kb-search-input::placeholder { color: var(--ink-soft); opacity: 1; }
+.kb-search-input::-webkit-search-cancel-button { display: none; }
+#ui .kb-search-input:focus-visible { outline-offset: -2px; }
+.kb-search-btn { border-radius: 999px; padding: 0 24px; }
+
+/* ── Not found ───────────────────────────────────────────────────────── */
+.kb-notfound {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--kb-safe-bottom) + var(--kb-search-h) + 12px);
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 2 * var(--kb-gutter)));
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px 16px 16px 20px;
+  animation: kb-rise 200ms ease-out;
+}
+.kb-notfound-body { flex: 1; min-width: 0; }
+.kb-notfound-title { margin: 0 0 4px; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.kb-notfound-text { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ink-soft); }
+.kb-notfound-text a {
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--kb-primary) 70%, transparent);
+}
+
+/* ── Resident card ───────────────────────────────────────────────────── */
+dialog.kb-card {
+  position: fixed;
+  inset: auto var(--kb-gutter) calc(var(--kb-safe-bottom)) auto;
+  right: max(var(--kb-gutter), env(safe-area-inset-right));
+  margin: 0;
+  width: 360px;
+  max-width: calc(100% - 2 * var(--kb-gutter));
+  max-height: calc(100dvh - 160px);
+  overflow: auto;
+  padding: 20px;
+  z-index: 2;
+  background: var(--kb-surface-strong);
+}
+dialog.kb-card[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: kb-rise 200ms ease-out;
+}
+/* keep the card clear of the centred search bar at every desktop width */
+@media (min-width: 900px) and (min-height: 600px) {
+  dialog.kb-card { bottom: calc(var(--kb-safe-bottom) + var(--kb-search-h) + 12px); }
+}
+.kb-card-head { display: flex; align-items: flex-start; gap: 8px; }
+.kb-card-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+/* focused by script on open so screen readers start here; not a tab stop, so no ring */
+#ui .kb-card-title:focus, #ui .kb-card-title:focus-visible { outline: none; }
+.kb-card-number {
+  margin: -8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.kb-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.kb-fact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.kb-fact .kb-icon { color: var(--ink-soft); }
+.kb-perks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.kb-perk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.kb-perk-founder {
+  background: var(--ink);
+  color: var(--paper);
+}
+.kb-perk-gold {
+  background: color-mix(in srgb, var(--gold) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 70%, transparent);
+  color: var(--ink);
+}
+.kb-perk-gold .kb-icon { color: var(--gold); }
+.kb-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.kb-card-actions .kb-btn { padding: 0 12px; }
+
+/* phones, tablets, landscape phones and short windows: bottom sheet, short enough that the
+   highlighted house (40% from top) stays in view */
+@media (max-width: 899px), (max-height: 599px) {
+  dialog.kb-card {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: 45dvh;
+    padding: 16px var(--kb-gutter) calc(16px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+    border-width: 1px 0 0;
+    gap: 8px;
+    background: color-mix(in srgb, var(--paper) 96%, transparent);
+  }
+  /* the sheet covers the search bar; take it out so it can't show through or be tabbed to */
+  #ui.kb-card-open > .kb-search { visibility: hidden; }
+  dialog.kb-card[open] { animation-name: kb-sheet; }
+  .kb-card-title { font-size: 22px; }
+  .kb-facts { gap: 4px; }
+  .kb-card-number { margin-top: -4px; }
+}
+
+/* ── Splash and error ────────────────────────────────────────────────── */
+#ui > .kb-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: var(--kb-gutter);
+  background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom));
+  color: var(--ink);
+  transition: opacity 400ms ease;
+}
+#ui > .kb-splash.kb-splash-done { opacity: 0; pointer-events: none; }
+.kb-splash-inner {
+  width: min(320px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  text-align: center;
+}
+.kb-splash-mark { font-size: clamp(48px, 14vw, 72px); text-shadow: none; }
+.kb-loading { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.kb-progress {
+  width: min(200px, 70%);
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+.kb-progress-fill {
+  height: 100%;
+  background: var(--kb-primary);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 300ms ease;
+}
+.kb-splash-text { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink-soft); line-height: 1.45; }
+.kb-error { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.kb-error .kb-splash-text { color: var(--ink); }
+
+@keyframes kb-rise {
+  from { opacity: 0; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes kb-sheet {
+  from { translate: 0 24px; opacity: 0.4; }
+  to { translate: 0 0; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kb-notfound, dialog.kb-card[open] { animation: none; }
+  #ui > .kb-splash, .kb-progress-fill, .kb-btn { transition: none; }
+}

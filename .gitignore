@@ -1,0 +1,10 @@
+node_modules
+dist
+.DS_Store
+out/
+.dev.vars
+.wrangler
+worker/.seed
+out
+*.png
+!public/**/*.png

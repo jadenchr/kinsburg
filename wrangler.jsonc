@@ -1,0 +1,55 @@
+// Kinsburg: static site (Workers Static Assets, free) + API/webhooks/cron Worker + D1.
+// Secrets (set with `npx wrangler secret put NAME`, locally via worker/.dev.vars or --var):
+//   IG_ACCESS_TOKEN, IG_USER_ID, IG_APP_SECRET, IG_VERIFY_TOKEN, STRIPE_WEBHOOK_SECRET, ADMIN_TOKEN
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kinsburg",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-10-20",
+
+  // Built site from `npx vite build`. Asset requests never run the Worker (free, unlimited);
+  // only paths with no matching file (/api/*, /webhooks/*, /admin/*) reach it. Keep run_worker_first off.
+  "assets": { "directory": "./dist" },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kinsburg",
+      // Replace with the id printed by `npx wrangler d1 create kinsburg` (any value works for local dev).
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+
+  // Daily Reel hosting: Instagram fetches the MP4 from /media/<file>. KV is free with no card on
+  // file; values are capped at 25 MiB and expire after 7 days. Replace the id with the one printed
+  // by `npx wrangler kv namespace create REELS` (any value works for local dev).
+  "kv_namespaces": [{ "binding": "REELS", "id": "00000000000000000000000000000000" }],
+
+  "triggers": {
+    "crons": [
+      "7,22,37,52 * * * *", // Instagram comment poller, every 15 min, off the top of the hour
+      "41 3 * * 1"          // weekly long-lived Instagram token refresh (Mondays 03:41 UTC)
+    ]
+  },
+
+  "vars": {
+    "CITY_NAME": "Kinsburg",
+    "CITY_ACCOUNT": "kinsburgtown",
+    "CITY_SEED": "kinsburg",
+    "CITY_FOUNDED_ISO": "2026-11-11",
+    "SITE_URL": "https://kinsburg.com",
+    "SHARD_SIZE": "5000",
+    "PACK_SIZE": "10",
+    "EDGE_CACHE": "true",
+    "IG_API_BASE": "https://graph.instagram.com/v27.0",
+    "IG_MEDIA_LIMIT": "10",
+    "IG_REPLY_ENABLED": "false",
+    "IG_REPLY_MAX_PER_RUN": "5",
+    // Stripe Payment Link id (plink_...) -> perk. A session's metadata.perk wins if set.
+    "STRIPE_PERKS": "{}",
+    "STRIPE_HANDLE_FIELD_KEY": "instagramhandle"
+  },
+
+  "observability": { "enabled": true }
+}
