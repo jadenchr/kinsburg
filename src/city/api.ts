@@ -45,6 +45,8 @@ export interface ReelFrame {
   camera: ReelCamera;
   /** resident ids to ring with a pulsing highlight */
   highlights: string[];
+  /** resident ids drawn with every light off (an empty-looking home at night) */
+  dark?: string[];
 }
 
 export interface ReelTarget {
@@ -60,6 +62,8 @@ export interface ReelTarget {
 export interface ReelControl {
   /** Where a resident's home is (by resident id), or null. */
   resident(id: string): ReelTarget | null;
+  /** The empty building lot closest to a resident's home (for "this lot is waiting" shots). */
+  emptyLotNear(id: string): ReelTarget | null;
   /** Where a landmark is (by Landmark.kind, e.g. 'townhall'), or null. */
   landmark(kind: string): ReelTarget | null;
   /** World-px bounding box of every lived-in home (falls back to the whole map). */

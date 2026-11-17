@@ -284,3 +284,39 @@ export async function refreshToken(env: Env) {
     return { ok: false, error: String(err) };
   }
 }
+
+// ---------------------------------------------------------------- Reel publishing relay (admin only)
+
+/**
+ * The daily Reel job (GitHub Actions) posts through the Worker, so the Instagram token lives only in
+ * Cloudflare and the weekly refresh keeps working for it. Only the three Reel-posting calls pass:
+ *   POST me/media, POST me/media_publish, GET <container or media id> ?fields=status_code,status | permalink
+ */
+const RELAY_GET_FIELDS = new Set(['status_code,status', 'status_code', 'permalink']);
+
+export async function igRelay(env: Env, body: any): Promise<Response> {
+  const token = await getToken(env);
+  const connected = !!(token && env.IG_USER_ID);
+  if (body?.check) return json({ connected });
+  if (!connected) return json({ error: 'Instagram not connected (set IG_ACCESS_TOKEN and IG_USER_ID)' }, 503);
+  const method = body?.method;
+  const path = String(body?.path ?? '');
+  const params: Record<string, string> = {};
+  for (const [k, v] of Object.entries(body?.params ?? {})) params[k] = String(v);
+  let target: string | null = null;
+  if (method === 'POST' && (path === 'me/media' || path === 'me/media_publish')) {
+    if (path === 'me/media' && params.media_type !== 'REELS') return json({ error: 'only REELS containers' }, 400);
+    target = `${env.IG_USER_ID}/${path.slice(3)}`;
+  } else if (method === 'GET' && /^[A-Za-z0-9_]{1,40}$/.test(path) && RELAY_GET_FIELDS.has(params.fields ?? '') && Object.keys(params).length === 1) {
+    target = path;
+  }
+  if (!target) return json({ error: 'call not allowed through the relay' }, 400);
+  try {
+    const ig = new IgClient(env.IG_API_BASE, token!);
+    return json(method === 'GET' ? await ig.get(target, params) : await ig.post(target, params));
+  } catch (err) {
+    const status = err instanceof IgError && err.status >= 400 ? err.status : 502;
+    log('ig_relay_failed', { path, error: String(err) });
+    return json({ error: String((err as Error).message ?? err) }, status);
+  }
+}

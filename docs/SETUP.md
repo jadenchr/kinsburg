@@ -18,14 +18,9 @@ They're a sensible starting point, not legal advice. If you start making real mo
 2. Make sure the account is **public**.
 3. In **Settings → Messages and story replies → Message controls**, allow connected tools to access messages, if that option is shown.
 
-## 2. Start Meta business verification now (it's the slow part)
+## 2. Meta business verification: skipped for now
 
-Automatic replies and joining by DM need Meta's App Review, and that needs **Business Verification**. Meta has rejected individuals who aren't a registered business, so:
-
-- If you already have a registered business (or sole proprietorship), keep its documents ready.
-- If not, look up what a sole proprietorship or DBA costs where you live.
-
-Kinsburg works without this: people still move in by commenting MOVE IN, picked up every 15 minutes. Verification only adds instant replies and DM joining. Plan on 3–6 weeks.
+You've chosen not to register a business, so Kinsburg launches on what works without Meta's approval: joining by commenting MOVE IN (checked every 15 minutes), votes, growing houses, perks, posters and the daily Reel. Joining by DM, the private welcome message and the Follower badge stay switched off. They need Meta's business verification, which you can do later with any registration document.
 
 ## 3. GitHub (15 minutes)
 
@@ -83,27 +78,13 @@ Open kinsburg.com: the city should show @kinsburgtown's house.
 2. **My Apps → Create app → Other → Business**, and name it "Kinsburg".
 3. Add the product **Instagram → API setup with Instagram login**.
 4. Under **Generate access tokens**, add @kinsburgtown, then copy the **access token** and the **Instagram user ID**.
-5. Store them (each asks for the value privately):
+5. Store them, plus the **Instagram app secret** from the same page (or **App settings → Basic**). Run this; it asks for each key privately, sends it straight to Cloudflare, and lets you skip any you don't have yet:
 
    ```bash
-   npx wrangler secret put IG_ACCESS_TOKEN
+   bash scripts/set-secrets.sh
    ```
 
-   ```bash
-   npx wrangler secret put IG_USER_ID
-   ```
-
-6. From **App settings → Basic**, store the **App secret**:
-
-   ```bash
-   npx wrangler secret put IG_APP_SECRET
-   ```
-
-7. Make up any word as a webhook password and store it:
-
-   ```bash
-   npx wrangler secret put IG_VERIFY_TOKEN
-   ```
+   The webhook password (`IG_VERIFY_TOKEN`) is already stored. A copy is in `~/.kinsburg-verify-token` for when you set up webhooks after App Review.
 
 8. **The important test (10 minutes):** ask a friend who has nothing to do with the app to comment **MOVE IN** on one of your posts. Within 15 minutes they should appear in the city. Tell me whether they did; it decides whether the free path works before App Review.
 
@@ -131,9 +112,9 @@ In the repository: **Settings → Secrets and variables → Actions**.
 - **Variables:**
   - `KINSBURG_URL` = `https://kinsburg.com`
 - **Secrets:**
-  - `ADMIN_TOKEN`, `IG_ACCESS_TOKEN`, `IG_USER_ID`: the same values as in Cloudflare.
-  - `CLOUDFLARE_API_TOKEN`: create it in Cloudflare at **My Profile → API Tokens** with the "Edit Cloudflare Workers" template, then add **D1: Edit**.
-  - `CLOUDFLARE_ACCOUNT_ID`: shown on the Cloudflare dashboard's right side.
+  - `ADMIN_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`: already stored.
+  - `CLOUDFLARE_API_TOKEN`: create it in Cloudflare at **My Profile → API Tokens** with the "Edit Cloudflare Workers" template, then add **D1: Edit**. `bash scripts/set-secrets.sh` asks for it last.
+- **No Instagram keys in GitHub.** The daily Reel posts through the Worker, which holds the token and renews it every Monday, so there's only one copy and it never goes stale.
 
 After that:
 

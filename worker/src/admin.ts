@@ -5,12 +5,13 @@
 //   POST /admin/perk    { handle, perk, remove? }        star | goldRoof | monument | street
 //   POST /admin/rebuild { shard? }                       rebuild snapshot shard(s) from the residents table
 //   POST /admin/poll                                     run the comment poller now
+//   POST /admin/ig      { method, path, params } | { check } relay the daily Reel's Instagram calls
 //   GET  /admin/stats
 import { shardOf } from '../../shared/residents-format.mjs';
 import { checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
 import { safeEqual } from './crypto';
 import { type Env, json, shardSize } from './env';
-import { pollComments } from './instagram';
+import { igRelay, pollComments } from './instagram';
 import { putMedia } from './media';
 import { townAdmin } from './town';
 
@@ -81,6 +82,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
     }
     case '/admin/poll':
       return json(await pollComments(env));
+    case '/admin/ig':
+      return igRelay(env, body);
     default:
       return json({ error: 'not found' }, 404);
   }

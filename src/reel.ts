@@ -20,6 +20,8 @@
 import type { CityData, Resident } from './types';
 import type { CityView, ReelCamera, ReelControl, ReelTarget } from './city/api';
 import { COLORS, FONTS, alpha, skyAt, type SkyState } from './theme';
+import { renderShareCard } from './ui/share';
+import { addressOf } from './ui/lookup';
 
 export interface ReelStats {
   city: string;
@@ -50,6 +52,14 @@ export interface KinsburgReel {
   colors: typeof COLORS;
   renderFrame(t: number): Promise<void>;
   captureFrame(t: number, type?: string, quality?: number): Promise<string>;
+  /** a resident card PNG (data URL), optionally with fields overridden (for launch reels) */
+  card(id: string, overrides?: Partial<Resident>): Promise<string>;
+  /** scripted camera for the launch reels; returns targets it couldn't find */
+  setScript(s: { duration: number; keys: { t: number; target: string; zoom?: number; y?: number }[]; hours?: { t: number; h: number }[]; dark?: { id: string; until: number }[]; rings?: { id: string; from: number; to?: number }[] }): string[];
+  /** world position of a resident's home (to pick neighbours) */
+  where(id: string): { x: number; y: number } | null;
+  /** every resident with their address, for choosing who to feature */
+  residents: { id: string; handle: string; job: string; number: number; level: number; perks: string[]; address: string | null }[];
 }
 
 declare global {
@@ -169,6 +179,24 @@ function buildPath(rc: ReelControl, focus: ReelTarget[], D: number, W: number, H
   return keys;
 }
 
+// ── single scripted shots (?shot=push|hold|pull|wide|timelapse) ─────────────────
+function shotPath(rc: ReelControl, kind: string, target: ReelTarget | null, zClose: number, D: number, W: number, H: number): Key[] {
+  const b = rc.homesBounds();
+  const zWide = Math.max(0.12, Math.min(0.6, W / ((b.maxX - b.minX) * 0.86)));
+  const wide: ReelCamera = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 - (H * 0.04) / zWide, zoom: zWide };
+  const at = (z: number): ReelCamera => (target ? { x: target.x, y: target.y - target.height * 0.4, zoom: z } : { ...wide, zoom: z });
+  switch (kind) {
+    case 'push': // from the neighbourhood down onto the target
+      return [{ t: 0, cam: at(zClose * 0.32), move: 'glide' }, { t: D, cam: at(zClose), move: 'hold' }];
+    case 'pull': // from the target back along its streets
+      return [{ t: 0, cam: at(zClose), move: 'glide' }, { t: D, cam: at(zClose * 0.4), move: 'hold' }];
+    case 'hold': // nearly still, a slow drift in
+      return [{ t: 0, cam: at(zClose), move: 'hold' }, { t: D, cam: at(zClose * 1.07), move: 'hold' }];
+    default: // 'wide' / 'timelapse': the whole town
+      return [{ t: 0, cam: wide, move: 'hold' }, { t: D, cam: { ...wide, zoom: zWide * 1.12 }, move: 'hold' }];
+  }
+}
+
 // ── poster (?reel=1&poster=1): the whole town on one print, the buyer's house circled ──
 function posterPath(rc: ReelControl, W: number, H: number): Key[] {
   const b = rc.homesBounds();
@@ -270,7 +298,17 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
   };
 
   const focusTargets = stats.focus.map((id) => rc.resident(id)).filter((p): p is ReelTarget => !!p);
-  const keys = poster ? posterPath(rc, W, H) : buildPath(rc, focusTargets, D, W, H);
+  // ?shot=… : one scripted shot for the launch reels (scripts/reel/launch.mjs)
+  const shotKind = params.get('shot');
+  const shotTargetId = normalise(params.get('target') ?? '');
+  const shotTarget = !shotKind ? null
+    : shotTargetId.startsWith('landmark:') ? rc.landmark(shotTargetId.slice(9))
+    : params.has('lot') ? rc.emptyLotNear(shotTargetId)
+    : rc.resident(shotTargetId);
+  const darkIds = (params.get('dark') ?? '').split(',').map(normalise).filter(Boolean);
+  const lightAt = num(params.get('lightAt'), Infinity, 0, 1e9);
+  const ringOn = params.get('ring') === '1';
+  const keys = poster ? posterPath(rc, W, H) : shotKind ? shotPath(rc, shotKind, shotTarget, num(params.get('zoom'), 2, 0.1, 6), D, W, H) : buildPath(rc, focusTargets, D, W, H);
 
   // Time of day: most of the change happens while the camera is wide, so the viewer
   // watches the whole town switch its lights on; then it settles into night.
@@ -282,10 +320,66 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
   };
 
   const canvas = document.getElementById('city') as HTMLCanvasElement;
+  // ── scripted camera (launch reels): set with window.kinsburgReel.setScript() ──
+  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[] } | null = null;
+  const resolveTarget = (spec: string): ReelTarget | null => {
+    const id = normalise(spec);
+    if (id === 'wide') return null;
+    if (id.startsWith('landmark:')) return rc.landmark(id.slice(9));
+    if (id.startsWith('lot:')) return rc.emptyLotNear(id.slice(4));
+    return rc.resident(id);
+  };
+  const wideCam = (): ReelCamera => {
+    const b = rc.homesBounds();
+    const z = Math.max(0.12, Math.min(0.6, W / ((b.maxX - b.minX) * 0.86)));
+    return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 - (H * 0.02) / z, zoom: z };
+  };
+  /** Camera between script keys: cubic ease in-out, keeping the closer shot's centre on a straight screen path. */
+  const scriptCamera = (t: number): ReelCamera => {
+    const ks = script!.cams;
+    if (t <= ks[0].t) return ks[0].cam;
+    for (let i = 0; i < ks.length - 1; i++) {
+      const a = ks[i], b = ks[i + 1];
+      if (t > b.t) continue;
+      const u = clamp01((t - a.t) / Math.max(1e-6, b.t - a.t));
+      const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+      return glide(a.cam, b.cam, e);
+    }
+    return ks[ks.length - 1].cam;
+  };
+  const scriptHour = (t: number): number => {
+    const hs = script!.hours;
+    if (!hs.length) return hourTo;
+    if (t <= hs[0].t) return hs[0].h;
+    for (let i = 0; i < hs.length - 1; i++) {
+      const a = hs[i], b = hs[i + 1];
+      if (t <= b.t) return lerp(a.h, b.h, easeInOut(clamp01((t - a.t) / Math.max(1e-6, b.t - a.t))));
+    }
+    return hs[hs.length - 1].h;
+  };
+
   const renderFrame = (t: number): Promise<void> => {
+    if (script) {
+      const tt = Math.max(0, Math.min(script.duration, Number(t) || 0));
+      rc.render({
+        t: tt,
+        sky: skyForHour(scriptHour(tt)),
+        camera: scriptCamera(tt),
+        highlights: script.rings.filter((r) => tt >= r.from && tt <= r.to).map((r) => r.id),
+        dark: script.dark.filter((d) => tt < d.until).map((d) => d.id),
+      });
+      return Promise.resolve();
+    }
     const tt = Math.max(0, Math.min(D, Number(t) || 0));
     const camera = cameraAt(keys, tt, W);
-    rc.render({ t: tt, sky: skyForHour(hourAt(tt)), camera, highlights: stats.focus });
+    const lit = tt >= lightAt;
+    rc.render({
+      t: tt,
+      sky: skyForHour(shotKind ? hourFrom + (hourTo - hourFrom) * (tt / D) : hourAt(tt)),
+      camera,
+      highlights: shotKind ? (ringOn && lit ? [shotTargetId] : []) : stats.focus,
+      dark: lit ? [] : darkIds,
+    });
     if (poster) drawPosterMarks(canvas, camera, focusTargets, data, stats.focus.map((id) => byId.get(id)!).filter(Boolean), W, H);
     return Promise.resolve();
   };
@@ -303,6 +397,40 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
     stats,
     colors: COLORS,
     renderFrame,
+    setScript(s) {
+      // each key: { t, target: resident id | 'landmark:kind' | 'lot:id' | 'wide', zoom?, y? (where the subject sits, 0..1 of the height) }
+      const cams = s.keys.map((k) => {
+        const tg = resolveTarget(k.target);
+        if (!tg) return { t: k.t, cam: k.zoom ? { ...wideCam(), zoom: k.zoom } : wideCam() };
+        const z = k.zoom ?? 2;
+        const sy = k.y ?? 0.56; // subject a little below centre: captions live in the upper third
+        return { t: k.t, cam: { x: tg.x, y: tg.y - tg.height * 0.35 - (sy - 0.5) * (H / z), zoom: z } };
+      });
+      script = {
+        duration: s.duration,
+        cams,
+        hours: s.hours ?? [],
+        dark: (s.dark ?? []).map((d) => ({ id: normalise(d.id), until: d.until })),
+        rings: (s.rings ?? []).map((r) => ({ id: normalise(r.id), from: r.from, to: r.to ?? 1e9 })),
+      };
+      const missing = s.keys.filter((k) => k.target !== 'wide' && !resolveTarget(k.target)).map((k) => k.target);
+      return missing;
+    },
+    where(id) {
+      const t = rc.resident(normalise(id));
+      return t ? { x: t.x, y: t.y } : null;
+    },
+    residents: data.residents.map((r) => ({ id: r.id, handle: r.handle, job: r.job, number: r.number, level: r.level ?? 0, perks: r.perks, address: addressOf(r, data) })),
+    async card(id, overrides = {}) {
+      const r = byId.get(normalise(id));
+      if (!r) throw new Error(`no resident ${id}`);
+      const blob = await renderShareCard({ ...r, ...overrides }, data, skyForHour(hourTo));
+      return await new Promise<string>((res) => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result));
+        fr.readAsDataURL(blob);
+      });
+    },
     async captureFrame(t, type = 'image/jpeg', quality = 0.92) {
       await renderFrame(t);
       return canvas.toDataURL(type, quality);

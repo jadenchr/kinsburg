@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <!-- Kinsburg profile picture: one small house at night with a single warm window.
+       Colours from src/theme.ts (night palette). Everything sits inside the central circle Instagram shows. -->
+  <defs>
+    <radialGradient id="sky" cx="50%" cy="42%" r="70%">
+      <stop offset="0" stop-color="#28346a"/>
+      <stop offset="1" stop-color="#0b1430"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffc95c" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#ffc95c" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffc95c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#sky)"/>
+  <!-- a few stars -->
+  <g fill="#eef1fb">
+    <circle cx="262" cy="250" r="5" opacity=".7"/><circle cx="790" cy="214" r="4" opacity=".55"/>
+    <circle cx="860" cy="372" r="3" opacity=".5"/><circle cx="198" cy="436" r="3" opacity=".45"/>
+    <circle cx="660" cy="150" r="3" opacity=".5"/><circle cx="410" cy="176" r="3" opacity=".4"/>
+  </g>
+  <g transform="translate(540 560) scale(1.16) translate(-540 -560)">
+  <!-- ground -->
+  <polygon points="540,470 852,626 540,782 228,626" fill="#2c4a3a"/>
+  <polygon points="228,626 540,782 540,808 228,652" fill="#223b2f"/>
+  <polygon points="540,782 852,626 852,652 540,808" fill="#1f3b31"/>
+  <!-- walls: left face in shade, right face catching the glow -->
+  <polygon points="330,620 540,725 540,525 330,420" fill="#5a6088"/>
+  <polygon points="540,725 750,620 750,420 540,525" fill="#7d84a8"/>
+  <!-- door -->
+  <polygon points="410,660 470,690 470,590 410,560" fill="#3a3f63"/>
+  <!-- the one lit window, with its glow -->
+  <circle cx="645" cy="545" r="230" fill="url(#glow)"/>
+  <polygon points="605,600 690,557 690,467 605,510" fill="#ffc95c"/>
+  <polygon points="605,600 690,557 690,467 605,510" fill="none" stroke="#fff3cf" stroke-width="6" opacity=".6"/>
+  <line x1="647" y1="579" x2="647" y2="489" stroke="#d99a2b" stroke-width="7"/>
+  <!-- hip roof -->
+  <polygon points="300,432 540,552 540,262" fill="#3f5878"/>
+  <polygon points="540,552 780,432 540,262" fill="#4f6d8f"/>
+  <polygon points="300,432 540,552 780,432 780,442 540,562 300,442" fill="#34496a"/>
+  <!-- chimney -->
+  <polygon points="640,330 680,310 680,250 640,270" fill="#5a6088"/>
+  <polygon points="620,320 640,330 640,270 620,260" fill="#3a3f63"/>
+  <polygon points="620,260 640,270 680,250 660,240" fill="#7d84a8"/>
+  </g>
+</svg>

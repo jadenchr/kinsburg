@@ -307,6 +307,21 @@ try {
     console.log('  publish stderr:', String(e.stderr).trim().split('\n').slice(0, 14).join('\n'));
   }
   ok(published?.container.media_type === 'REELS' && published.container.video_url === `${BASE}/media/reel-2026-11-11.mp4` && published.container.cover_url?.endsWith('.jpg') && published.creation_id === 'cont1', 'publish uploads, creates a REELS container with hosted URLs, then publishes it', published);
+  // Default path: no Instagram token on the runner, the Worker relays the calls with its own token.
+  published = null;
+  const relayEnv = { ...process.env, KINSBURG_URL: BASE, ADMIN_TOKEN: SECRETS.ADMIN_TOKEN, IG_ACCESS_TOKEN: '', IG_USER_ID: '' };
+  try {
+    await promisify(execFile)('node', ['scripts/reel/publish.mjs', '--date', '2026-11-11', '--out', pubDir, '--poll-seconds', '1', '--publish'], { cwd: root, env: relayEnv, encoding: 'utf8' });
+  } catch (e) {
+    console.log('  relay publish stderr:', String(e.stderr).trim().split('\n').slice(0, 14).join('\n'));
+  }
+  ok(published?.container.media_type === 'REELS' && published.creation_id === 'cont1', 'publish without an Instagram token posts through the Worker relay', published);
+  r = await admin('/admin/ig', { method: 'POST', path: 'me/messages', params: { message: '{}' } });
+  ok(r.status === 400, 'relay refuses calls other than Reel posting', r.status);
+  r = await admin('/admin/ig', { method: 'GET', path: 'me', params: { fields: 'id,username,followers_count' } });
+  ok(r.status === 400, 'relay refuses other reads', r.status);
+  r = await fetch(`${BASE}/admin/ig`, { method: 'POST', body: JSON.stringify({ check: true }) });
+  ok(r.status === 401, 'relay needs the admin token', r.status);
   rmSync(pubDir, { recursive: true, force: true });
 
   const st = await (await admin('/admin/stats')).json();

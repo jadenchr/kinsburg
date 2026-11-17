@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "demo-data": "node scripts/generate-demo.mjs",
     "test:worker": "node worker/test/e2e.mjs",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p worker"
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p worker",
+    "reel:launch": "node scripts/reel/launch.mjs",
+    "reel": "node scripts/reel/record.mjs",
+    "poster": "node scripts/poster.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.65.0",

@@ -36,6 +36,22 @@ node scripts/reel/publish.mjs
 
 It only posts when you add `--publish`.
 
+## The three launch Reels
+
+The scripted launch Reels from [launch-content.md](launch-content.md) §3 are cut from the city by one command. It renders "Yours is still dark", "Comment two words" and "The city picks your job" to `out/launch/`, each with a cover image and caption file:
+
+```bash
+npm run reel:launch
+```
+
+How they're made:
+- **Narration** in the same voice as From Day 30 (Kokoro "am_fenrir" at 0.86). It's made on this computer by `scripts/reel/voice.py`, using the model from the From Day 30 project, so it has no cost.
+- **Timing:** every camera move and caption is timed from the narration.
+- **Camera:** one continuous camera per scene (hold, smooth glide, hold), with close-ups on houses. Soft dissolves are used only where the time of day jumps.
+- **Text:** one style throughout, the same as From Day 30. Short captions in a fixed spot follow the voice, with the last word in gold. A small info bar sits at the top, and the address plate, comment bubble and card share one centre column.
+
+Run it again with `-- --url https://kinsburg.com` once real people live there, so the houses, names and numbers are real. There's a quiet music bed under the voice; you can add your own sound in the Instagram app.
+
 ## Run it from GitHub by hand
 
 Actions tab → **Daily reel** → **Run workflow**. "Record only" is ticked by default. Every run keeps the MP4 as a downloadable artifact for 14 days, so you can watch it before turning posting on.

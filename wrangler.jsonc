@@ -11,12 +11,18 @@
   // only paths with no matching file (/api/*, /webhooks/*, /admin/*) reach it. Keep run_worker_first off.
   "assets": { "directory": "./dist" },
 
+  // kinsburg.com (bought through Cloudflare) serves this Worker; www goes to the same place.
+  "routes": [
+    { "pattern": "kinsburg.com", "custom_domain": true },
+    { "pattern": "www.kinsburg.com", "custom_domain": true }
+  ],
+
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "kinsburg",
       // Replace with the id printed by `npx wrangler d1 create kinsburg` (any value works for local dev).
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "7087cded-4a1d-4a38-8b79-b22838a7a480",
       "migrations_dir": "worker/migrations"
     }
   ],
@@ -24,7 +30,7 @@
   // Daily Reel hosting: Instagram fetches the MP4 from /media/<file>. KV is free with no card on
   // file; values are capped at 25 MiB and expire after 7 days. Replace the id with the one printed
   // by `npx wrangler kv namespace create REELS` (any value works for local dev).
-  "kv_namespaces": [{ "binding": "REELS", "id": "00000000000000000000000000000000" }],
+  "kv_namespaces": [{ "binding": "REELS", "id": "100c09cddb5e4493951c7621f1b41f45" }],
 
   "triggers": {
     "crons": [

@@ -675,6 +675,32 @@ export const createCityView: CreateCityView = (canvas) => {
           if (oi !== undefined) rings.push(oi);
         }
         render(f.t * 1000, true, rings, f.t * 1000);
+        if (f.dark?.length && look) {
+          // repaint these homes with every light off, then whatever stands in front of them
+          const dim = makeLook({ ...look.sky, glow: 0 });
+          const S = cam.zoom * dpr;
+          const detail = Math.max(1, detailFor(S));
+          for (const id of f.dark) {
+            const oi = model.byResident.get(id);
+            if (oi === undefined) continue;
+            const o = model.objs[oi];
+            drawEntry(ctx, o, dim, detail);
+            const r: Region = { x0: o.x, y0: o.y, x1: o.x + o.w + 4, y1: o.y + o.h + 4, dMin: -1e9, dMax: 1e9, sMin: o.depth + 1, sMax: 1e9 };
+            drawObjects(ctx, r, detail);
+          }
+        }
+      },
+      emptyLotNear(id) {
+        const oi = model?.byResident.get(id);
+        if (oi === undefined || !model) return null;
+        const home = model.objs[oi];
+        let best: Obj | null = null, bestD = Infinity;
+        for (const o of model.objs) {
+          if (o.kind !== 'lot') continue;
+          const d = (o.x - home.x) ** 2 + (o.y - home.y) ** 2;
+          if (d < bestD) { bestD = d; best = o; }
+        }
+        return best ? targetOf(best) : null;
       },
     };
   }

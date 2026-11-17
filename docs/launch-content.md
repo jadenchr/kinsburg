@@ -66,6 +66,8 @@ From their public profile (checked 11 Nov 2026): 19 posts, about 8,971 followers
 ### Profile picture concept
 One small house at night with a single warm-yellow window, on deep navy. No text and no wordmark. It has to read at 40 px in comments, and the lit window is the brand's signature image. Keep the same picture on every platform.
 
+**The file:** [brand/profile-picture.png](../brand/profile-picture.png) (1080×1080; the editable source is [brand/profile-picture.svg](../brand/profile-picture.svg)). The same art at 1024×1024 is [brand/app-icon-1024.png](../brand/app-icon-1024.png), for the Meta app icon.
+
 ### Pinned posts
 Reel A ("Yours is still dark"), Reel B ("Comment two words"), and the "How to move in" carousel from day 4.
 

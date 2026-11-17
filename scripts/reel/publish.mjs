@@ -10,8 +10,9 @@
 // Env (GitHub Actions secrets/vars):
 //   KINSBURG_URL     site base, e.g. https://kinsburg.com  (videos are hosted at <base>/media/<file>)
 //   ADMIN_TOKEN      the Worker's admin token (for the upload)
-//   IG_ACCESS_TOKEN  long-lived Instagram token for @kinsburgtown
-//   IG_USER_ID       Instagram professional account id
+//   IG_ACCESS_TOKEN  optional. Leave unset (recommended): the Instagram calls then go through the
+//   IG_USER_ID       Worker (POST /admin/ig), which holds the token and refreshes it weekly. Set both
+//                    only to post straight to Instagram, e.g. from your own computer.
 //   IG_API_BASE      default https://graph.instagram.com/v27.0
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -70,8 +71,19 @@ async function upload(file) {
   return pub;
 }
 
+// Direct mode needs the token here; relay mode (the default in GitHub Actions) lets the Worker add it.
+const DIRECT = !!(IG_ACCESS_TOKEN && IG_USER_ID);
+
+async function relay(body) {
+  const res = await fetch(`${BASE}/admin/ig`, { method: 'POST', headers: { authorization: `Bearer ${ADMIN_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) fail(`${body.method ?? 'check'} ${body.path ?? ''} via the Worker: HTTP ${res.status} ${data.error ?? ''}`);
+  return data;
+}
+
 async function ig(method, path, params = {}) {
-  const url = new URL(`${IG_BASE}/${path}`);
+  if (!DIRECT) return relay({ method, path, params });
+  const url = new URL(`${IG_BASE}/${path.replace(/^me\//, `${IG_USER_ID}/`)}`);
   const init = { method };
   const all = { ...params, access_token: IG_ACCESS_TOKEN };
   if (method === 'GET') url.search = new URLSearchParams(all).toString();
@@ -89,17 +101,25 @@ if (!PUBLISH) {
   log('DRY RUN: nothing will be uploaded or posted. Add --publish to do it for real.');
   log('video   ', videoUrl ?? `${videoFile} → PUT ${BASE || '<KINSBURG_URL>'}/admin/media/${basename(videoFile)}`);
   log('cover   ', coverUrl ?? (existsSync(coverFile) ? `${coverFile} → PUT ${BASE || '<KINSBURG_URL>'}/admin/media/${basename(coverFile)}` : '(none)'));
+  log('via     ', DIRECT ? `straight to ${IG_BASE}` : `the Worker (${BASE || '<KINSBURG_URL>'}/admin/ig), which holds the Instagram token`);
   log('step 1  ', `POST ${IG_BASE}/${IG_USER_ID ?? '<IG_USER_ID>'}/media  media_type=REELS share_to_feed=true video_url=… cover_url=… caption=(${caption.length} chars)`);
   log('step 2  ', `GET  ${IG_BASE}/<container>?fields=status_code  every ${POLL_SECONDS}s until FINISHED (max ${POLL_LIMIT_SECONDS}s)`);
   log('step 3  ', `POST ${IG_BASE}/${IG_USER_ID ?? '<IG_USER_ID>'}/media_publish  creation_id=<container>`);
   log('caption ↓\n' + caption);
-  const missing = ['KINSBURG_URL', 'ADMIN_TOKEN', 'IG_ACCESS_TOKEN', 'IG_USER_ID'].filter((k) => (k === 'KINSBURG_URL' ? !BASE : !process.env[k]));
+  const missing = ['KINSBURG_URL', 'ADMIN_TOKEN'].filter((k) => (k === 'KINSBURG_URL' ? !BASE : !process.env[k]));
   if (missing.length) log('missing for a real run:', missing.join(', '));
   process.exit(0);
 }
 
 // ── real run ─────────────────────────────────────────────────────────────────
-if (!IG_ACCESS_TOKEN || !IG_USER_ID) fail('IG_ACCESS_TOKEN and IG_USER_ID are required');
+if (!DIRECT) {
+  if (!BASE || !ADMIN_TOKEN) fail('KINSBURG_URL and ADMIN_TOKEN are required');
+  const { connected } = await relay({ check: true });
+  if (!connected) {
+    log('Instagram is not connected on the Worker yet (IG_ACCESS_TOKEN / IG_USER_ID): recorded only, nothing posted.');
+    process.exit(0);
+  }
+}
 if (!videoUrl || (!coverUrl && existsSync(coverFile))) {
   if (!BASE || !ADMIN_TOKEN) fail('KINSBURG_URL and ADMIN_TOKEN are required to host the video (or pass --video-url)');
   videoUrl ??= await upload(videoFile);
@@ -108,7 +128,7 @@ if (!videoUrl || (!coverUrl && existsSync(coverFile))) {
 
 const params = { media_type: 'REELS', video_url: videoUrl, caption, share_to_feed: 'true' };
 if (coverUrl) params.cover_url = coverUrl;
-const { id: container } = await ig('POST', `${IG_USER_ID}/media`, params);
+const { id: container } = await ig('POST', 'me/media', params);
 log('container', container, '— waiting for Instagram to process the video');
 
 let waited = 0;
@@ -121,6 +141,6 @@ for (;;) {
   waited += POLL_SECONDS;
 }
 
-const { id: mediaId } = await ig('POST', `${IG_USER_ID}/media_publish`, { creation_id: container });
+const { id: mediaId } = await ig('POST', 'me/media_publish', { creation_id: container });
 const { permalink } = await ig('GET', mediaId, { fields: 'permalink' });
 log('published', mediaId, permalink ?? '');

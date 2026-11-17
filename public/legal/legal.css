@@ -14,4 +14,3 @@ p, li { color: var(--ink); }
 .meta { color: var(--ink-soft); margin: 0 0 8px; font-size: 15px; }
 a { color: var(--accent); text-underline-offset: 2px; }
 nav { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 16px; font-size: 15px; }
-.fill { background: color-mix(in srgb, var(--accent) 18%, transparent); padding: 0 4px; border-radius: 4px; }
