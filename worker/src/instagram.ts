@@ -64,13 +64,15 @@ export class IgClient {
 
 // ---------------------------------------------------------------- shared comment pipeline
 
+// Line 1 of the welcome reply. Links in Instagram comments aren't tappable, so the house link
+// lives in the bio; {n} is the resident number.
 const REPLIES = [
-  'Built! 🏠 Your house: {url}',
-  'Welcome to Kinsburg, neighbour #{n}! 🏡 {url}',
-  'Keys are ready 🔑 {url}',
-  'You live here now ✨ #{n} → {url}',
-  'Your house is up 🏡 Find it: {url}',
-  'Fresh paint, new neighbour 🎨 {url}',
+  'Welcome to Kinsburg, neighbour #{n}! 🏡',
+  'You live here now ✨ #{n}',
+  'Keys are ready 🔑 House #{n} is yours',
+  'Built! 🏠 Welcome home, #{n}',
+  'Your house is up 🏡 #{n}',
+  'Fresh paint, new neighbour 🎨 #{n}',
 ];
 
 // A gentle reason to follow, never a condition (Instagram forbids rewarding follows).
@@ -80,12 +82,12 @@ const FOLLOW_NUDGES = [
   'Follow to see the town grow ✨',
 ];
 
-function replyText(env: Env, handle: string, n: number | undefined): string {
-  const host = env.SITE_URL.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+function replyText(_env: Env, handle: string, n: number | undefined): string {
   const i = n ?? handle.length;
-  const t = REPLIES[i % REPLIES.length];
+  const greeting = REPLIES[i % REPLIES.length];
+  const line1 = n ? greeting.replace('{n}', String(n)) : greeting.replace(/,? ?(House )?#\{n\}( is yours)?/, '');
   const nudge = FOLLOW_NUDGES[Math.floor(i / REPLIES.length) % FOLLOW_NUDGES.length];
-  return `${t.replace('{url}', `${host}/?r=${handle}`).replace('{n}', String(n ?? ''))} · ${nudge}`;
+  return `${line1}\n${nudge}`;
 }
 
 /**
