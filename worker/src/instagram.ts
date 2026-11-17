@@ -73,10 +73,19 @@ const REPLIES = [
   'Fresh paint, new neighbour 🎨 {url}',
 ];
 
+// A gentle reason to follow, never a condition (Instagram forbids rewarding follows).
+const FOLLOW_NUDGES = [
+  'Follow to watch your street light up 🌙',
+  'Follow to catch your house in a Reel 🎬',
+  'Follow to see the town grow ✨',
+];
+
 function replyText(env: Env, handle: string, n: number | undefined): string {
   const host = env.SITE_URL.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-  const t = REPLIES[(n ?? handle.length) % REPLIES.length];
-  return t.replace('{url}', `${host}/?r=${handle}`).replace('{n}', String(n ?? ''));
+  const i = n ?? handle.length;
+  const t = REPLIES[i % REPLIES.length];
+  const nudge = FOLLOW_NUDGES[Math.floor(i / REPLIES.length) % FOLLOW_NUDGES.length];
+  return `${t.replace('{url}', `${host}/?r=${handle}`).replace('{n}', String(n ?? ''))} · ${nudge}`;
 }
 
 /**
