@@ -95,6 +95,7 @@ async function mockHandler(req, res) {
     published.creation_id = u.searchParams.get('creation_id');
     return send({ id: 'pub1' });
   }
+  if (u.pathname === '/v27.0/me') return send({ user_id: SECRETS.IG_USER_ID, username: 'kinsburgtown' });
   if (u.pathname === '/v27.0/pub1') return send({ permalink: 'https://instagram.com/reel/test' });
   // DMs: profile lookup and replies
   const PROFILES = { '555': { username: 'dm_person', is_user_follow_business: true }, '556': { username: 'via_webhook', is_user_follow_business: false } };
@@ -320,6 +321,9 @@ try {
   ok(r.status === 400, 'relay refuses calls other than Reel posting', r.status);
   r = await admin('/admin/ig', { method: 'GET', path: 'me', params: { fields: 'id,username,followers_count' } });
   ok(r.status === 400, 'relay refuses other reads', r.status);
+  r = await admin('/admin/ig', { whoami: true });
+  const who = await r.json();
+  ok(r.status === 200 && who.user_id === SECRETS.IG_USER_ID && who.username === 'kinsburgtown' && who.matchesStoredUserId === true && !JSON.stringify(who).includes(SECRETS.IG_ACCESS_TOKEN), 'whoami confirms the token and account without revealing the token', who);
   r = await fetch(`${BASE}/admin/ig`, { method: 'POST', body: JSON.stringify({ check: true }) });
   ok(r.status === 401, 'relay needs the admin token', r.status);
   rmSync(pubDir, { recursive: true, force: true });

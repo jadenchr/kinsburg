@@ -4,8 +4,8 @@
 //                                                        resident to "vacant.lot.<n>" (plots never shift)
 //   POST /admin/perk    { handle, perk, remove? }        star | goldRoof | monument | street
 //   POST /admin/rebuild { shard? }                       rebuild snapshot shard(s) from the residents table
-//   POST /admin/poll                                     run the comment poller now
-//   POST /admin/ig      { method, path, params } | { check } relay the daily Reel's Instagram calls
+//   POST /admin/check-comments                           run the comment poller now (/admin/poll is the vote poll)
+//   POST /admin/ig      { method, path, params } | { check } | { whoami } relay the daily Reel's Instagram calls
 //   GET  /admin/stats
 import { shardOf } from '../../shared/residents-format.mjs';
 import { checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
@@ -80,7 +80,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       await env.DB.prepare('DELETE FROM city_shards WHERE shard > ?1').bind(last).run();
       return json({ rebuilt: await rebuildShards(env, ids), healed: await healSnapshots(env) });
     }
-    case '/admin/poll':
+    case '/admin/check-comments':
       return json(await pollComments(env));
     case '/admin/ig':
       return igRelay(env, body);

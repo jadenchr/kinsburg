@@ -1,5 +1,6 @@
-// Instagram API with Instagram Login (graph.instagram.com): comment poller, comments webhook,
-// optional public replies, long-lived token refresh. IG_API_BASE is configurable so tests can
+// Instagram API (graph.facebook.com with a Business Manager system-user token from Meta's Unified
+// login, or graph.instagram.com with an Instagram Login token): comment poller, comments webhook,
+// optional public replies, token refresh (Instagram Login tokens only). IG_API_BASE is configurable so tests can
 // point at a local mock.
 import { matchesMoveIn } from '../../shared/residents-format.mjs';
 import { eventStmt, joinMany, writeSnapshots, healSnapshots, type JoinResult, type JoinSource } from './city';
@@ -262,6 +263,11 @@ export async function refreshToken(env: Env) {
     log('token_refresh_skipped', { reason: 'no token' });
     return { skipped: true };
   }
+  if (isFacebookHost(env.IG_API_BASE)) {
+    // Business Manager system-user tokens (Unified login) never expire; nothing to refresh.
+    log('token_refresh_skipped', { reason: 'facebook system-user token' });
+    return { skipped: true };
+  }
   const url = new URL('/refresh_access_token', env.IG_API_BASE); // unversioned endpoint on the API host
   url.search = new URLSearchParams({ grant_type: 'ig_refresh_token', access_token: token }).toString();
   try {
@@ -298,6 +304,20 @@ export async function igRelay(env: Env, body: any): Promise<Response> {
   const token = await getToken(env);
   const connected = !!(token && env.IG_USER_ID);
   if (body?.check) return json({ connected });
+  if (body?.whoami) {
+    // Confirms the stored token works and tells setup which account (and IG_USER_ID) it belongs to.
+    if (!token) return json({ error: 'no Instagram token stored' }, 503);
+    if (!isFacebookHost(env.IG_API_BASE)) {
+      try {
+        const me = await new IgClient(env.IG_API_BASE, token).get('me', { fields: 'user_id,username' });
+        return json({ api: 'instagram', user_id: String(me.user_id ?? ''), username: me.username ?? null, matchesStoredUserId: env.IG_USER_ID ? String(me.user_id) === env.IG_USER_ID : null });
+      } catch (err) {
+        // Tokens from Meta's newer "Unified login" (EA...) only work on graph.facebook.com: try it below.
+        if (!token.startsWith('EA')) return json({ error: String((err as Error).message ?? err) }, 502);
+      }
+    }
+    return json(await facebookWhoami(env, token, body?.id), 200);
+  }
   if (!connected) return json({ error: 'Instagram not connected (set IG_ACCESS_TOKEN and IG_USER_ID)' }, 503);
   const method = body?.method;
   const path = String(body?.path ?? '');
@@ -319,4 +339,60 @@ export async function igRelay(env: Env, body: any): Promise<Response> {
     log('ig_relay_failed', { path, error: String(err) });
     return json({ error: String((err as Error).message ?? err) }, status);
   }
+}
+
+export const isFacebookHost = (base: string) => /graph\.facebook\.com/.test(base);
+
+/**
+ * For Facebook-style (EA...) tokens from Meta's Unified login / Business Manager system users: which
+ * Instagram professional accounts the token reaches, plus its type, expiry and scopes. Never returns
+ * the token itself. Accounts come from the token's granted assets (needs IG_APP_SECRET, the app's
+ * secret, to inspect it) or from Facebook Pages linked to Instagram.
+ */
+async function facebookWhoami(env: Env, token: string, candidate?: unknown) {
+  const fbBase = isFacebookHost(env.IG_API_BASE) ? env.IG_API_BASE : 'https://graph.facebook.com/v27.0';
+  const fb = new IgClient(fbBase, token);
+  const out: any = { api: 'facebook', base: fbBase, accounts: [] as any[] };
+  const attempt = async (label: string, fn: () => Promise<void>) => {
+    try { await fn(); } catch (err) { (out.errors ??= {})[label] = String((err as Error).message ?? err).slice(0, 200); }
+  };
+  const igIds = new Set<string>();
+  if (/^\d{5,25}$/.test(String(candidate ?? ''))) igIds.add(String(candidate)); // an ID copied from Business settings
+  if (env.IG_USER_ID) igIds.add(env.IG_USER_ID);
+  if (env.IG_APP_SECRET && env.META_APP_ID) {
+    await attempt('token', async () => {
+      const app = new IgClient(fbBase, `${env.META_APP_ID}|${env.IG_APP_SECRET}`);
+      const d = (await app.get('debug_token', { input_token: token })).data ?? {};
+      const granular = d.granular_scopes ?? [];
+      out.token = { type: d.type, valid: d.is_valid, expiresAt: d.expires_at ? new Date(d.expires_at * 1000).toISOString() : 'never', scopes: d.scopes };
+      for (const g of granular) if (g.scope === 'instagram_basic') for (const id of g.target_ids ?? []) igIds.add(String(id));
+      out.token.instagramAccountsGranted = igIds.size;
+    });
+  }
+  await attempt('pages', async () => {
+    const pages = await fb.get('me/accounts', { fields: 'name,instagram_business_account{id,username}' });
+    for (const p of pages.data ?? []) {
+      const ig = p.instagram_business_account;
+      if (ig) out.accounts.push({ user_id: String(ig.id), username: ig.username ?? null, via: `page ${p.name}` });
+    }
+  });
+  for (const id of igIds) {
+    if (out.accounts.some((a: any) => a.user_id === id)) continue;
+    await attempt(`account ${id}`, async () => {
+      const a = await fb.get(id, { fields: 'id,username' });
+      out.accounts.push({ user_id: String(a.id), username: a.username ?? null, via: 'granted asset' });
+    });
+  }
+  const target = out.accounts.find((a: any) => a.username === 'kinsburgtown') ?? out.accounts[0];
+  out.user_id = target?.user_id ?? '';
+  out.username = target?.username ?? null;
+  out.matchesStoredUserId = env.IG_USER_ID && target ? target.user_id === env.IG_USER_ID : null;
+  if (out.user_id) {
+    await attempt('media', async () => {
+      const m = await fb.get(`${out.user_id}/media`, { fields: 'id', limit: '1' });
+      out.canReadMedia = Array.isArray(m.data);
+    });
+  }
+  if (!out.user_id) out.hint = 'The token reaches no Instagram account: assign @kinsburgtown to this system user in Meta Business settings.';
+  return out;
 }

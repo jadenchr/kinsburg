@@ -8,3 +8,9 @@ worker/.seed
 out
 *.png
 !public/**/*.png
+
+# screenshots dropped in the project folder
+/*.jpg
+/*.jpeg
+/*.png
+/*.heic

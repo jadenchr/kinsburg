@@ -13,7 +13,7 @@
 //   IG_ACCESS_TOKEN  optional. Leave unset (recommended): the Instagram calls then go through the
 //   IG_USER_ID       Worker (POST /admin/ig), which holds the token and refreshes it weekly. Set both
 //                    only to post straight to Instagram, e.g. from your own computer.
-//   IG_API_BASE      default https://graph.instagram.com/v27.0
+//   IG_API_BASE      direct mode only; default https://graph.facebook.com/v27.0 (Unified login token)
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +31,7 @@ const PUBLISH = has('publish');
 const DATE = opt('date', new Date().toISOString().slice(0, 10));
 const OUT = resolve(ROOT, opt('out', 'out'));
 const BASE = (opt('base', process.env.KINSBURG_URL) ?? '').replace(/\/+$/, '');
-const IG_BASE = (process.env.IG_API_BASE ?? 'https://graph.instagram.com/v27.0').replace(/\/+$/, '');
+const IG_BASE = (process.env.IG_API_BASE ?? 'https://graph.facebook.com/v27.0').replace(/\/+$/, '');
 const { ADMIN_TOKEN, IG_ACCESS_TOKEN, IG_USER_ID } = process.env;
 const POLL_SECONDS = Number(opt('poll-seconds', '10'));
 const POLL_LIMIT_SECONDS = Number(opt('timeout', '900'));

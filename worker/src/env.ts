@@ -16,6 +16,8 @@ export interface Env {
   EDGE_CACHE?: string;
 
   IG_API_BASE: string;
+  /** Meta app id (public), used with IG_APP_SECRET to inspect tokens. */
+  META_APP_ID?: string;
   IG_MEDIA_LIMIT: string;
   IG_REPLY_ENABLED: string;
   IG_REPLY_MAX_PER_RUN: string;
