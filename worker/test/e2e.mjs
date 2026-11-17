@@ -268,6 +268,25 @@ try {
   r = await fetch(`${BASE}/webhooks/instagram`, { method: 'POST', headers: { 'x-hub-signature-256': 'sha256=00', 'content-type': 'application/json' }, body: hook });
   ok(r.status === 401 || r.status === 403, 'badly signed webhook rejected', r.status);
 
+  console.log('\nCAST ME (permission to appear in videos)');
+  const castHook = (changes) => {
+    const b = JSON.stringify({ object: 'instagram', entry: [{ id: SECRETS.IG_USER_ID, time: 2, changes: changes.map(([id, text, username]) => ({ field: 'comments', value: { id, text, from: { id: '9', username }, media: { id: 'm1' } } })) }] });
+    return fetch(`${BASE}/webhooks/instagram`, { method: 'POST', headers: { 'x-hub-signature-256': 'sha256=' + createHmac('sha256', SECRETS.IG_APP_SECRET).update(b).digest('hex'), 'content-type': 'application/json' }, body: b });
+  };
+  const castList = async () => (await (await admin('/admin/cast')).json()).cast.map((x) => x.handle);
+  r = await castHook([['c901', 'CAST ME 🎬', 'new_person1'], ['c902', 'move in cast me pls', 'cast_newbie'], ['c903', 'great podcast meeting', 'lurker']]);
+  ok(r.status === 200, 'cast comments accepted', r.status);
+  let cast = await castList();
+  ok(cast.includes('new_person1') && cast.includes('cast_newbie') && !cast.includes('lurker'), 'CAST ME grants the commenter; look-alike words do not', cast);
+  ({ data } = await loadCity());
+  ok(data.residents.some((x) => x.id === 'cast_newbie'), 'MOVE IN + CAST ME in one comment does both');
+  r = await admin('/admin/cast', { handle: 'new_person1', remove: true });
+  ok(r.status === 200 && !(await castList()).includes('new_person1'), 'admin removes permission (after a DM)');
+  await castHook([['c901', 'CAST ME 🎬', 'new_person1']]);
+  ok(!(await castList()).includes('new_person1'), 'an old CAST ME comment never re-grants after removal');
+  r = await fetch(`${BASE}/admin/cast`);
+  ok(r.status === 401, 'cast list needs the admin token', r.status);
+
   console.log('\nDMs (after App Review)');
   const dm = (sender, text) => {
     const b = JSON.stringify({ object: 'instagram', entry: [{ id: SECRETS.IG_USER_ID, time: 1, messaging: [{ sender: { id: sender }, recipient: { id: SECRETS.IG_USER_ID }, message: { mid: 'm' + sender, text } }] }] });

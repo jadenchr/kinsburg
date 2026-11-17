@@ -49,6 +49,7 @@ export declare function maskToPerks(mask: number): Perk[];
 export declare function normalizeHandle(raw: unknown): string;
 export declare function isValidHandle(h: string): boolean;
 export declare function matchesMoveIn(text: unknown): boolean;
+export declare function matchesCastMe(text: unknown): boolean;
 export declare function traitsFor(handle: string): { job: number; houseStyle: number };
 export declare function cityDayAt(foundedISO: string, ms?: number): number;
 export declare function encodeResident(r: {

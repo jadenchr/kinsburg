@@ -639,6 +639,36 @@ export const createCityView: CreateCityView = (canvas) => {
     return { x: p.cx, y: p.cy, height: o.height, size: Math.max(o.w, o.h) };
   }
 
+  /** Index of the empty plot nearest a resident's house, for reel shots of "the next house". */
+  function nearestLot(id: string): number | undefined {
+    const oi = model?.byResident.get(id);
+    if (oi === undefined || !model) return undefined;
+    const home = model.objs[oi];
+    let best: number | undefined, bestD = Infinity;
+    model.objs.forEach((o, k) => {
+      if (o.kind !== 'lot') return;
+      const d = (o.x - home.x) ** 2 + (o.y - home.y) ** 2;
+      if (d < bestD) { bestD = d; best = k; }
+    });
+    return best;
+  }
+
+  /**
+   * Index of the empty plot the next resident will move into. Houses fill plots in rising plot-id
+   * order (checked from 4 to 20,000 residents), so it's the lowest empty house plot above the
+   * highest one taken.
+   */
+  function nextLot(): number | undefined {
+    if (!model) return undefined;
+    let taken = -1;
+    for (const o of model.objs) if (o.kind === 'house' && o.plot) taken = Math.max(taken, o.plot.id);
+    let best: number | undefined, bestId = Infinity;
+    model.objs.forEach((o, k) => {
+      if (o.kind === 'lot' && o.plot && o.plot.kind === 'house' && o.plot.id > taken && o.plot.id < bestId) { bestId = o.plot.id; best = k; }
+    });
+    return best;
+  }
+
   function reelControl(): ReelControl {
     return {
       resident(id) {
@@ -671,7 +701,8 @@ export const createCityView: CreateCityView = (canvas) => {
         cam.rev++;
         const rings: number[] = [];
         for (const id of f.highlights) {
-          const oi = model.byResident.get(id);
+          // 'lot:<resident>' rings the empty plot nearest that resident (the next house to come)
+          const oi = id === 'next' ? nextLot() : id.startsWith('lot:') ? nearestLot(id.slice(4)) : model.byResident.get(id);
           if (oi !== undefined) rings.push(oi);
         }
         render(f.t * 1000, true, rings, f.t * 1000);
@@ -690,17 +721,13 @@ export const createCityView: CreateCityView = (canvas) => {
           }
         }
       },
+      nextLot() {
+        const li = nextLot();
+        return li === undefined || !model ? null : targetOf(model.objs[li]);
+      },
       emptyLotNear(id) {
-        const oi = model?.byResident.get(id);
-        if (oi === undefined || !model) return null;
-        const home = model.objs[oi];
-        let best: Obj | null = null, bestD = Infinity;
-        for (const o of model.objs) {
-          if (o.kind !== 'lot') continue;
-          const d = (o.x - home.x) ** 2 + (o.y - home.y) ** 2;
-          if (d < bestD) { bestD = d; best = o; }
-        }
-        return best ? targetOf(best) : null;
+        const li = nearestLot(id);
+        return li === undefined || !model ? null : targetOf(model.objs[li]);
       },
     };
   }

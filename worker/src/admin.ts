@@ -6,6 +6,7 @@
 //   POST /admin/rebuild { shard? }                       rebuild snapshot shard(s) from the residents table
 //   POST /admin/check-comments                           run the comment poller now (/admin/poll is the vote poll)
 //   POST /admin/ig      { method, path, params } | { check } | { whoami } relay the daily Reel's Instagram calls
+//   GET  /admin/cast | POST /admin/cast { handle, remove? }   who may appear in videos (CAST ME)
 //   GET  /admin/stats
 import { shardOf } from '../../shared/residents-format.mjs';
 import { checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
@@ -14,6 +15,7 @@ import { type Env, json, shardSize } from './env';
 import { igRelay, pollComments } from './instagram';
 import { putMedia } from './media';
 import { townAdmin } from './town';
+import { castAdmin } from './cast';
 
 export async function handleAdmin(req: Request, env: Env, path: string): Promise<Response> {
   if (!env.ADMIN_TOKEN) return json({ error: 'admin disabled (set ADMIN_TOKEN)' }, 503);
@@ -21,6 +23,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
   if (!safeEqual(auth, `Bearer ${env.ADMIN_TOKEN}`)) return json({ error: 'unauthorized' }, 401);
 
   if (req.method === 'GET' && path === '/admin/stats') return stats(env);
+  if (req.method === 'GET' && path === '/admin/cast') return castAdmin(env, req, null);
   if (req.method === 'PUT' && path.startsWith('/admin/media/')) return putMedia(req, env, path);
   if (req.method !== 'POST') return json({ error: 'not found' }, 404);
   let body: any;
@@ -80,6 +83,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       await env.DB.prepare('DELETE FROM city_shards WHERE shard > ?1').bind(last).run();
       return json({ rebuilt: await rebuildShards(env, ids), healed: await healSnapshots(env) });
     }
+    case '/admin/cast':
+      return castAdmin(env, req, body);
     case '/admin/check-comments':
       return json(await pollComments(env));
     case '/admin/ig':

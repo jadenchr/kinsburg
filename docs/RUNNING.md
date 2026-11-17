@@ -76,6 +76,22 @@ curl -s -X POST https://kinsburg.com/admin/block -H "Authorization: Bearer YOUR_
 
 After Meta approves the app, people can do this themselves by messaging **MOVE OUT**.
 
+## Who may appear in videos (CAST ME)
+
+People give permission by commenting **CAST ME** on any post (it works next to MOVE IN, too). See who has:
+
+```bash
+curl -s https://kinsburg.com/admin/cast -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+If someone DMs to take it back, remove them. An old CAST ME comment won't add them again; only a new one will:
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/cast -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"handle":"their_handle","remove":true}'
+```
+
+More in [in-this-town.md](in-this-town.md).
+
 ## After Meta approves the app
 
 In `wrangler.jsonc`, set these to `"true"`. Then I'll deploy, or you commit and push.

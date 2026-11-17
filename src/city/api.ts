@@ -64,6 +64,8 @@ export interface ReelControl {
   resident(id: string): ReelTarget | null;
   /** The empty building lot closest to a resident's home (for "this lot is waiting" shots). */
   emptyLotNear(id: string): ReelTarget | null;
+  /** the empty plot the next resident will get */
+  nextLot(): ReelTarget | null;
   /** Where a landmark is (by Landmark.kind, e.g. 'townhall'), or null. */
   landmark(kind: string): ReelTarget | null;
   /** World-px bounding box of every lived-in home (falls back to the whole map). */

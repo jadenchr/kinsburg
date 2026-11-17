@@ -70,6 +70,12 @@ export function matchesMoveIn(text) {
   return /(^| )move ?in( |$)/.test(t);
 }
 
+/** "CAST ME" anywhere in a comment: permission to appear in videos (independent of MOVE IN). */
+export function matchesCastMe(text) {
+  const t = String(text ?? '').normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ');
+  return /(^| )cast ?me( |$)/.test(t);
+}
+
 /** Job and house style picked deterministically from the (lowercase) handle. */
 export function traitsFor(handle) {
   const rng = mulberry32(hashString('kinsburg|traits|' + handle));

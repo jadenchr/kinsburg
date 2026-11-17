@@ -22,6 +22,7 @@ import type { CityView, ReelCamera, ReelControl, ReelTarget } from './city/api';
 import { COLORS, FONTS, alpha, skyAt, type SkyState } from './theme';
 import { renderShareCard } from './ui/share';
 import { addressOf } from './ui/lookup';
+import { drawJadie, JADIE_HEIGHT, type JadiePose } from './reel-jadie';
 
 export interface ReelStats {
   city: string;
@@ -55,7 +56,7 @@ export interface KinsburgReel {
   /** a resident card PNG (data URL), optionally with fields overridden (for launch reels) */
   card(id: string, overrides?: Partial<Resident>): Promise<string>;
   /** scripted camera for the launch reels; returns targets it couldn't find */
-  setScript(s: { duration: number; keys: { t: number; target: string; zoom?: number; y?: number }[]; hours?: { t: number; h: number }[]; dark?: { id: string; until: number }[]; rings?: { id: string; from: number; to?: number }[] }): string[];
+  setScript(s: { duration: number; keys: { t: number; target: string; zoom?: number; y?: number }[]; hours?: { t: number; h: number }[]; dark?: { id: string; until: number }[]; rings?: { id: string; from: number; to?: number }[]; labels?: ReelLabel[]; actors?: ReelActor[]; ease?: 'cubic' | 'sine' }): string[];
   /** world position of a resident's home (to pick neighbours) */
   where(id: string): { x: number; y: number } | null;
   /** every resident with their address, for choosing who to feature */
@@ -104,6 +105,20 @@ interface Key {
   /** how this segment (key → next key) moves */
   move: 'hold' | 'glide' | 'hop';
 }
+
+/**
+ * A character walking the map in a scripted reel (only 'jadie' for now). Keys place him at a target
+ * (resident id, 'lot:<id>', 'landmark:<kind>') plus an offset in world units; between two keys at
+ * different spots he walks, otherwise he holds the key's pose. `talk` spans open and close his mouth.
+ */
+export interface ReelActor {
+  id: 'jadie';
+  keys: { t: number; at: string; dx?: number; dy?: number; pose?: JadiePose; face?: 1 | -1 }[];
+  talk?: { from: number; to: number }[];
+}
+
+/** A name tag pinned above a home in a scripted reel (fades in and out, stays the same size on screen). */
+export interface ReelLabel { id: string; text: string; sub?: string; from: number; to: number; lift?: number }
 
 /**
  * Glide between two cameras keeping the closer shot's centre on a straight screen path
@@ -195,6 +210,108 @@ function shotPath(rc: ReelControl, kind: string, target: ReelTarget | null, zClo
     default: // 'wide' / 'timelapse': the whole town
       return [{ t: 0, cam: wide, move: 'hold' }, { t: D, cam: { ...wide, zoom: zWide * 1.12 }, move: 'hold' }];
   }
+}
+
+// ── name tags (scripted reels) ──
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** Size of a tag's plate and where its roof is on screen, for layout and drawing. */
+function labelBox(ctx: CanvasRenderingContext2D, l: ReelLabel, p: ReelTarget, cam: ReelCamera, W: number, H: number) {
+  const u = W / 1080;
+  ctx.font = `800 ${36 * u}px ${FONTS.ui}`;
+  const tw = ctx.measureText(l.text).width;
+  ctx.font = `700 ${23 * u}px ${FONTS.ui}`;
+  const sw = l.sub ? ctx.measureText(l.sub).width : 0;
+  const w = Math.max(tw, sw) + 52 * u, h = (l.sub ? 92 : 64) * u;
+  const rx = W / 2 + (p.x - cam.x) * cam.zoom;
+  const roof = H / 2 + (p.y - p.height * 0.95 - cam.y) * cam.zoom;
+  return { u, w, h, rx, roof };
+}
+
+/**
+ * Lift tags so none overlap, measured once at the camera where they're read (so nothing jumps
+ * while the camera moves). Left to right; each rises in small steps until it clears the others.
+ */
+function layoutLabels(canvas: HTMLCanvasElement, cam: ReelCamera, labels: ReelLabel[], find: (id: string) => ReelTarget | null, W: number, H: number): number[] {
+  const ctx = canvas.getContext('2d')!;
+  const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  const lifts = labels.map(() => 0);
+  const order = labels.map((l, i) => ({ i, p: find(l.id) })).filter((o) => o.p).sort((a, b) => a.p!.x - b.p!.x);
+  for (const { i, p } of order) {
+    const l = labels[i];
+    const b = labelBox(ctx, l, p!, cam, W, H);
+    const gap = 14 * b.u;
+    let lift = (l.lift ?? 0) * b.u;
+    for (let k = 0; k < 60; k++) {
+      const y1 = b.roof - 70 * b.u - lift, y0 = y1 - b.h, x0 = b.rx - b.w / 2, x1 = b.rx + b.w / 2;
+      if (!placed.some((r) => x0 < r.x1 + gap && x1 > r.x0 - gap && y0 < r.y1 + gap && y1 > r.y0 - gap)) {
+        placed.push({ x0, y0, x1, y1 });
+        break;
+      }
+      lift += 8 * b.u;
+    }
+    lifts[i] = lift / b.u;
+  }
+  return lifts;
+}
+
+/** Tags above homes: a plate with the handle (and a small gold line), on a thin stem down to the roof. */
+function drawLabels(canvas: HTMLCanvasElement, cam: ReelCamera, labels: ReelLabel[], lifts: number[], t: number, find: (id: string) => ReelTarget | null, W: number, H: number) {
+  const ctx = canvas.getContext('2d')!;
+  const u = W / 1080;
+  const FADE = 0.4;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (const [li, l] of labels.entries()) {
+    const a = Math.min(1, Math.max(0, (t - l.from) / FADE), Math.max(0, (l.to - t) / FADE));
+    if (a <= 0) continue;
+    const p = find(l.id);
+    if (!p) continue;
+    const e = a * a * (3 - 2 * a); // smoothstep for the fade and the rise
+    const rx = W / 2 + (p.x - cam.x) * cam.zoom;
+    const roof = H / 2 + (p.y - p.height * 0.95 - cam.y) * cam.zoom;
+    const stem = (70 + (lifts[li] ?? 0)) * u;
+    const bottom = roof - stem + (1 - e) * 14 * u;
+    ctx.globalAlpha = e;
+    ctx.font = `800 ${36 * u}px ${FONTS.ui}`;
+    const tw = ctx.measureText(l.text).width;
+    ctx.font = `700 ${23 * u}px ${FONTS.ui}`;
+    const sw = l.sub ? ctx.measureText(l.sub).width : 0;
+    const padX = 26 * u, h = (l.sub ? 92 : 64) * u;
+    const w = Math.max(tw, sw) + padX * 2;
+    const x = Math.min(Math.max(rx - w / 2, 24 * u), W - 24 * u - w);
+    const y = bottom - h;
+    // stem and roof dot
+    ctx.strokeStyle = alpha(COLORS.paper, 0.75);
+    ctx.lineWidth = 2.5 * u;
+    ctx.beginPath(); ctx.moveTo(rx, bottom); ctx.lineTo(rx, roof - 6 * u); ctx.stroke();
+    ctx.fillStyle = COLORS.gold;
+    ctx.beginPath(); ctx.arc(rx, roof - 6 * u, 5.5 * u, 0, Math.PI * 2); ctx.fill();
+    // plate (flat, neutral shadow)
+    ctx.fillStyle = 'rgba(11,20,48,0.35)';
+    roundRect(ctx, x, y + 6 * u, w, h, 20 * u); ctx.fill();
+    ctx.fillStyle = alpha(COLORS.nightPaper, 0.94);
+    roundRect(ctx, x, y, w, h, 20 * u); ctx.fill();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = COLORS.paper;
+    ctx.font = `800 ${36 * u}px ${FONTS.ui}`;
+    ctx.fillText(l.text, x + w / 2, y + (l.sub ? 44 : 44) * u);
+    if (l.sub) {
+      ctx.fillStyle = COLORS.gold;
+      ctx.font = `700 ${23 * u}px ${FONTS.ui}`;
+      ctx.fillText(l.sub, x + w / 2, y + 76 * u);
+    }
+  }
+  ctx.restore();
 }
 
 // ── poster (?reel=1&poster=1): the whole town on one print, the buyer's house circled ──
@@ -321,10 +438,11 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
 
   const canvas = document.getElementById('city') as HTMLCanvasElement;
   // ── scripted camera (launch reels): set with window.kinsburgReel.setScript() ──
-  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[] } | null = null;
+  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[]; labels: ReelLabel[]; lifts?: number[]; actors: { id: string; keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1 }[]; talk: { from: number; to: number }[] }[]; ease: 'cubic' | 'sine' } | null = null;
   const resolveTarget = (spec: string): ReelTarget | null => {
     const id = normalise(spec);
     if (id === 'wide') return null;
+    if (id === 'next') return rc.nextLot();
     if (id.startsWith('landmark:')) return rc.landmark(id.slice(9));
     if (id.startsWith('lot:')) return rc.emptyLotNear(id.slice(4));
     return rc.resident(id);
@@ -334,6 +452,22 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
     const z = Math.max(0.12, Math.min(0.6, W / ((b.maxX - b.minX) * 0.86)));
     return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 - (H * 0.02) / z, zoom: z };
   };
+  /** Where an actor is at time t, the pose to draw and which way he faces. */
+  const actorAt = (a: { keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1 }[] }, t: number) => {
+    const ks = a.keys;
+    if (t <= ks[0].t) return { x: ks[0].x, y: ks[0].y, pose: ks[0].pose, face: ks[0].face ?? 1 };
+    for (let i = 0; i < ks.length - 1; i++) {
+      const A = ks[i], B = ks[i + 1];
+      if (t > B.t) continue;
+      const moving = Math.hypot(B.x - A.x, B.y - A.y) > 0.5;
+      if (!moving) return { x: A.x, y: A.y, pose: A.pose, face: A.face ?? 1 };
+      const u = clamp01((t - A.t) / Math.max(1e-6, B.t - A.t));
+      const e = u * u * (3 - 2 * u);
+      return { x: lerp(A.x, B.x, e), y: lerp(A.y, B.y, e), pose: 'walk' as JadiePose, face: (B.face ?? (B.x >= A.x ? 1 : -1)) as 1 | -1 };
+    }
+    const L = ks[ks.length - 1];
+    return { x: L.x, y: L.y, pose: L.pose, face: L.face ?? 1 };
+  };
   /** Camera between script keys: cubic ease in-out, keeping the closer shot's centre on a straight screen path. */
   const scriptCamera = (t: number): ReelCamera => {
     const ks = script!.cams;
@@ -342,7 +476,8 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
       const a = ks[i], b = ks[i + 1];
       if (t > b.t) continue;
       const u = clamp01((t - a.t) / Math.max(1e-6, b.t - a.t));
-      const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+      // sine eases gently (peak speed ~1.6x the average) for long, calm moves; cubic is snappier (~3x)
+      const e = script!.ease === 'sine' ? easeInOut(u) : u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
       return glide(a.cam, b.cam, e);
     }
     return ks[ks.length - 1].cam;
@@ -361,13 +496,32 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
   const renderFrame = (t: number): Promise<void> => {
     if (script) {
       const tt = Math.max(0, Math.min(script.duration, Number(t) || 0));
+      const camera = scriptCamera(tt);
       rc.render({
         t: tt,
         sky: skyForHour(scriptHour(tt)),
-        camera: scriptCamera(tt),
+        camera,
         highlights: script.rings.filter((r) => tt >= r.from && tt <= r.to).map((r) => r.id),
         dark: script.dark.filter((d) => tt < d.until).map((d) => d.id),
       });
+      for (const a of script.actors) {
+        const p = actorAt(a, tt);
+        const ctx = canvas.getContext('2d')!;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const talk = a.talk.some((r) => tt >= r.from && tt <= r.to);
+        drawJadie(ctx, W / 2 + (p.x - camera.x) * camera.zoom, H / 2 + (p.y - camera.y) * camera.zoom, camera.zoom, p.pose, tt, p.face, talk);
+        ctx.restore();
+      }
+      if (script.labels.length) {
+        const find = (id: string) => rc.resident(id);
+        if (!script.lifts) {
+          // lay the tags out where they're read: the middle of the time they're all up
+          const tRef = (Math.max(...script.labels.map((l) => l.from)) + Math.min(...script.labels.map((l) => l.to))) / 2;
+          script.lifts = layoutLabels(canvas, scriptCamera(tRef), script.labels, find, W, H);
+        }
+        drawLabels(canvas, camera, script.labels, script.lifts, tt, find, W, H);
+      }
       return Promise.resolve();
     }
     const tt = Math.max(0, Math.min(D, Number(t) || 0));
@@ -398,8 +552,27 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
     colors: COLORS,
     renderFrame,
     setScript(s) {
-      // each key: { t, target: resident id | 'landmark:kind' | 'lot:id' | 'wide', zoom?, y? (where the subject sits, 0..1 of the height) }
+      const missingActors: string[] = [];
+      const actors = (s.actors ?? []).map((a) => ({
+        id: a.id,
+        talk: a.talk ?? [],
+        keys: a.keys.map((k) => {
+          const tg = resolveTarget(k.at);
+          if (!tg) missingActors.push(k.at);
+          return { t: k.t, x: (tg?.x ?? 0) + (k.dx ?? 0), y: (tg?.y ?? 0) + (k.dy ?? 0), pose: k.pose ?? 'idle', face: k.face };
+        }),
+      }));
+      // each key: { t, target: resident id | 'landmark:kind' | 'lot:id' | 'actor:jadie' | 'wide', zoom?, y? (where the subject sits, 0..1 of the height) }
       const cams = s.keys.map((k) => {
+        if (k.target.startsWith('actor:')) {
+          const a = actors.find((x) => x.id === k.target.slice(6));
+          if (a) {
+            const p = actorAt(a, k.t);
+            const z = k.zoom ?? 4;
+            const sy = k.y ?? 0.6;
+            return { t: k.t, cam: { x: p.x, y: p.y - JADIE_HEIGHT * 0.5 - (sy - 0.5) * (H / z), zoom: z } };
+          }
+        }
         const tg = resolveTarget(k.target);
         if (!tg) return { t: k.t, cam: k.zoom ? { ...wideCam(), zoom: k.zoom } : wideCam() };
         const z = k.zoom ?? 2;
@@ -412,9 +585,12 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
         hours: s.hours ?? [],
         dark: (s.dark ?? []).map((d) => ({ id: normalise(d.id), until: d.until })),
         rings: (s.rings ?? []).map((r) => ({ id: normalise(r.id), from: r.from, to: r.to ?? 1e9 })),
+        labels: (s.labels ?? []).map((l) => ({ ...l, id: normalise(l.id) })),
+        actors,
+        ease: s.ease ?? 'cubic',
       };
-      const missing = s.keys.filter((k) => k.target !== 'wide' && !resolveTarget(k.target)).map((k) => k.target);
-      return missing;
+      const missing = s.keys.filter((k) => k.target !== 'wide' && !k.target.startsWith('actor:') && !resolveTarget(k.target)).map((k) => k.target);
+      return [...missing, ...missingActors];
     },
     where(id) {
       const t = rc.resident(normalise(id));
