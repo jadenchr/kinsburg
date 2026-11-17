@@ -1,0 +1,27 @@
+Every lit window in this city is a real person. This one is still dark. 🌙
+
+Kinsburg is a cozy isometric city built from Instagram comments. Comment MOVE IN and one of these windows is yours: a house, a street address, a job and a resident card to post.
+
+The city follows your clock, so come back tonight and see your light on.
+
+Find your house: link in bio.
+
+#kinsburg #citybuilder #isometric #cozygames #nightcity
+
+────────────────────────────────────────
+NOTES (don't paste anything below this line)
+
+Status: RE-RENDER BEFORE POSTING. This cut was made from the demo city: its info bar says "1,200 residents" and shows a made-up resident (#14, 28 Glade Way). Re-render from the live city first: npm run reel:launch -- --url https://kinsburg.com (best once 20+ people live there).
+
+Files
+- Video: kinsburg-launch-01-yours-is-still-dark.mp4 (15.8 s, 1080×1920)
+- Cover: kinsburg-launch-01-yours-is-still-dark-cover.jpg (in Instagram: Edit cover → Add from camera roll)
+
+Hashtags: 5, Instagram's maximum since December 2025. They mostly help people find the Reel in search, so the caption also says "cozy isometric city" in plain words.
+
+Alt text (Advanced settings → Accessibility → Write alt text):
+A cozy isometric city of hundreds of houses; the camera glides to one empty plot, an address plate appears, the sky goes from sunset to night and the windows light up.
+
+After posting
+- Reply to the first comments within the first hour; replies count as comments too.
+- Run the comment check if you want houses to appear straight away.

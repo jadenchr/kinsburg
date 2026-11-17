@@ -14,3 +14,6 @@ out
 /*.jpeg
 /*.png
 /*.heic
+
+# Reel videos are large: keep them out of git (covers and captions are tracked)
+reels/**/*.mp4

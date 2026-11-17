@@ -1,0 +1,30 @@
+Comment two words, get a house. 🏡
+
+How moving in to Kinsburg works:
+1) Comment MOVE IN
+2) The city builds your house and gives you a street address and a job
+3) You get a resident card for your Story
+
+Your house grows the longer you stay. Free, and it stays free.
+
+Find your house: link in bio.
+
+#kinsburg #citybuilder #isometric #cozygames #indiegame
+
+────────────────────────────────────────
+NOTES (don't paste anything below this line)
+
+Status: RE-RENDER BEFORE POSTING. Made from the demo city ("1,200 residents" in the info bar). Re-render from the live city first: npm run reel:launch -- --url https://kinsburg.com.
+
+Files
+- Video: kinsburg-launch-02-comment-two-words.mp4 (15.1 s, 1080×1920)
+- Cover: kinsburg-launch-02-comment-two-words-cover.jpg (in Instagram: Edit cover → Add from camera roll)
+
+Hashtags: 5, Instagram's maximum since December 2025. They mostly help people find the Reel in search, so the caption also says "cozy isometric city" in plain words.
+
+Alt text (Advanced settings → Accessibility → Write alt text):
+A colourful isometric town: a MOVE IN comment bubble appears, a house gets an address plate, a resident card slides in, then the whole town lights up at night.
+
+After posting
+- Reply to the first comments within the first hour; replies count as comments too.
+- Run the comment check if you want houses to appear straight away.

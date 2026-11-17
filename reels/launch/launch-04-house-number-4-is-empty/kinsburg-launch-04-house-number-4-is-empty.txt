@@ -1,0 +1,29 @@
+Only 3 people live in this city. House #4 is still empty. 🏡
+
+Day 1 of Kinsburg: a cozy isometric city where every house belongs to a real person on Instagram.
+
+Comment MOVE IN and the city builds yours: a street address, a job it picks for you, and a window that lights up when it gets dark where you live. Resident numbers are forever, so low numbers never come back.
+
+Find your house: link in bio.
+
+#kinsburg #citybuilder #isometric #cozygames #buildinpublic
+
+────────────────────────────────────────
+NOTES (don't paste anything below this line)
+
+Status: READY. Made from the live city on 17 Nov. It says 3 residents and house #4: true while kinsburg.com still shows 3 residents. If more people have moved in, re-render it first (npm run reel:launch -- --url https://kinsburg.com) so the numbers match.
+Suggested slot: post this first, as Day 1.
+
+Files
+- Video: kinsburg-launch-04-house-number-4-is-empty.mp4 (14.9 s, 1080×1920)
+- Cover: kinsburg-launch-04-house-number-4-is-empty-cover.jpg (in Instagram: Edit cover → Add from camera roll)
+- Grid preview: kinsburg-launch-04-house-number-4-is-empty-grid-preview.jpg (how the cover looks cropped on the profile grid)
+
+Hashtags: 5, Instagram's maximum since December 2025. They mostly help people find the Reel in search, so the caption also says "cozy isometric city" in plain words.
+
+Alt text (Advanced settings → Accessibility → Write alt text):
+A small isometric town at night with three lit houses labelled @kinsburgtown, @itsjadenchristy and @metabro.pov, a MOVE IN comment bubble and a resident card.
+
+After posting
+- Reply to the first comments within the first hour; replies count as comments too.
+- Run the comment check if you want houses to appear straight away.
