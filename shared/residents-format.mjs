@@ -66,11 +66,14 @@ export function isValidHandle(h) {
  * "𝐌𝐎𝐕𝐄 𝐈𝐍" (NFKC folds styled letters). "remove input" does not match.
  */
 export function matchesMoveIn(text) {
-  const t = ` ${String(text ?? '').normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ').trim()} `;
+  const base = String(text ?? '').normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+  // "Moveee innnn", "MOVE INNN": letters stretched for emphasis count once.
+  const t = ` ${base.replace(/([a-z])\1+/g, '$1')} `;
+  if (base.split(' ').length <= 4 && / movie in /.test(` ${base} `)) return true; // the common typo, in a short comment
   if (/ (don t|dont|not|never|won t|wont) /.test(t) && !/ move ?in /.test(t)) return false;
   return (
     / (move|moving|moved|movin) ?(me )?in /.test(t) || // MOVE IN, moving in, move me in, movein
-    / (i |me )?(want|need|wanna|give me|get me|can i get|can i have|i d like)( a| an| my)? (house|home|plot) /.test(t) ||
+    / (i |me )?(want|ned|wana|give me|get me|can i get|can i have|i d like)( a| an| my)? (house|home|plot) /.test(t) ||
     / (house|home) (please|pls|plz) /.test(t) ||
     / i want in /.test(t)
   );

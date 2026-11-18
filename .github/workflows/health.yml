@@ -1,0 +1,48 @@
+# Checks every 6 hours that Kinsburg is still answering on Instagram. If something is wrong the run
+# fails, and GitHub emails the repository owner about the failed run: that email is the alarm.
+#   - Instagram not connected, or the key stopped working
+#   - Instagram keeps blocking replies (paused 24 h or more in a row)
+#   - more than 40 MOVE IN comments waiting for a reply
+# Needs the repository secret ADMIN_TOKEN and the variable KINSBURG_URL.
+name: Health check
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KINSBURG_URL: ${{ vars.KINSBURG_URL }}
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+    steps:
+      - name: Check Instagram replies
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json')
+          curl -sf -X POST "$KINSBURG_URL/admin/ig" "${auth[@]}" -d '{"check":true}' > ig.json
+          curl -sf -X POST "$KINSBURG_URL/admin/replies" "${auth[@]}" -d '{"dryRun":true}' > replies.json
+          python3 - <<'EOF'
+          import json, sys
+          ig = json.load(open('ig.json'))
+          r = json.load(open('replies.json'))
+          pace = r.get('pace') or {}
+          queued = (r.get('missed') or {}).get('candidates', 0)
+          problems = []
+          if not ig.get('connected'):
+              problems.append('Instagram is not connected (key missing or no longer working).')
+          if r.get('error'):
+              problems.append(f"Reading comments failed: {r['error']}")
+          if pace.get('pausedUntil') and pace.get('lastPauseHours', 0) >= 24:
+              problems.append(f"Instagram keeps blocking replies; paused until {pace['pausedUntil']} ({pace['lastPauseHours']} h).")
+          if queued > 40:
+              problems.append(f'{queued} MOVE IN comments are waiting for a reply.')
+          print(f"replies today: {pace.get('today')} / {pace.get('perDay')}, queued: {queued}, paused until: {pace.get('pausedUntil')}")
+          print(f"other comments without a reply: {len(r.get('otherUnanswered') or [])}")
+          for p in problems:
+              print(f'::error::{p}')
+          sys.exit(1 if problems else 0)
+          EOF

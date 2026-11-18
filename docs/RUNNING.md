@@ -104,3 +104,25 @@ Following is never required for a house. Followers get a badge, and everyone els
 ## How houses grow
 
 Every comment a resident leaves on our posts counts. At 3 comments the house gets a second storey, at 10 a third, and at 30 a fourth. Only the number of comments is stored, never what they say.
+
+## Comment replies
+
+Kinsburg replies to every MOVE IN comment, at a human pace: at most 2 replies per 15-minute check, a few seconds apart, and at most 80 a day. Instagram blocks accounts that post bursts of similar comments, so this pace is deliberate. Comments that miss out (over the limit, or while paused) wait in a queue and get their reply on a later check.
+
+If Instagram blocks commenting anyway, Kinsburg stops trying: replies pause for 6 hours, then 12, 24 and up to 48 if it happens again, and continue on their own afterwards. Retrying into a block only makes it longer.
+
+See what's waiting, without posting anything:
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/replies -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"dryRun":true}'
+```
+
+It lists the queued MOVE IN replies, other comments nobody has answered (those never get an automatic reply, so answer them yourself), and `pace`: replies sent today and whether replies are paused.
+
+Run a comment check now instead of waiting up to 15 minutes:
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/check-comments -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+**The alarm:** the **Health check** workflow on GitHub runs every 6 hours. It fails, and GitHub emails you, when Instagram is disconnected, keeps blocking replies for 24 hours or more, or more than 40 replies are waiting.

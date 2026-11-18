@@ -25,9 +25,18 @@ const MAX_PAGES_PER_MEDIA = 4;
 const MAX_JOINS_PER_RUN = 300; // CPU guard; the rest waits for the next run (not marked processed)
 
 class IgError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: number, public subcode?: number) {
     super(message);
   }
+}
+
+/**
+ * Instagram refusing to let the account comment right now (anti-spam action block, rate limits).
+ * Retrying makes the block longer, so replies pause instead (see pauseReplies).
+ */
+function isCommentBlock(err: unknown): boolean {
+  if (!(err instanceof IgError)) return false;
+  return [4, 17, 20, 32, 368, 613].includes(err.code ?? -1) || err.subcode === 1772107;
 }
 
 /** Refreshed token in D1 wins over the IG_ACCESS_TOKEN secret (secrets can't be rewritten at runtime). */
@@ -56,7 +65,9 @@ export class IgClient {
     let data: any = null;
     try { data = JSON.parse(text); } catch { /* non-JSON error page */ }
     if (!res.ok || data?.error) {
-      throw new IgError(res.status, `${method} ${path}: ${res.status} ${data?.error?.message ?? text.slice(0, 120)}`);
+      const e = data?.error;
+      const codes = e ? ` [code ${e.code ?? '?'}${e.error_subcode ? `/${e.error_subcode}` : ''}${e.type ? ` ${e.type}` : ''}${e.error_user_title ? ` · ${e.error_user_title}` : ''}${e.error_user_msg ? ` · ${e.error_user_msg}` : ''}]` : '';
+      throw new IgError(res.status, `${method} ${path}: ${res.status} ${e?.message ?? text.slice(0, 120)}${codes}`, e?.code, e?.error_subcode);
     }
     return data;
   }
@@ -137,7 +148,7 @@ export async function processComments(env: Env, comments: IgComment[], source: J
   // and the "joined" status both gate it).
   const replied = new Set<string>();
   const replyOn = env.IG_REPLY_ENABLED === 'true' && client;
-  const maxReplies = intVar(env.IG_REPLY_MAX_PER_RUN, 5);
+  let replyBudget = replyOn ? await replyAllowance(env) : 0;
   for (let i = 0; i < fresh.length; i++) {
     const r = results[i];
     if (r.status === 'joined') report.joined.push(r.handle);
@@ -150,16 +161,20 @@ export async function processComments(env: Env, comments: IgComment[], source: J
         log('private_reply_failed', { comment: fresh[i].id, error: String(err) });
       }
     }
-    if (replyOn && r.status === 'joined' && report.replies < maxReplies) {
+    if (replyOn && r.status === 'joined' && replyBudget > 0) {
       try {
+        if (report.replies) await humanPause();
         await client.post(`${fresh[i].id}/replies`, { message: replyText(env, r.handle, r.number) });
         replied.add(fresh[i].id);
         report.replies++;
+        replyBudget--;
       } catch (err) {
         report.replyErrors++;
         log('reply_failed', { comment: fresh[i].id, error: String(err) });
+        if (isCommentBlock(err)) { await pauseReplies(env, err); replyBudget = 0; }
       }
     }
+    // Comments that didn't get a reply now are picked up later by replyToMissed.
   }
 
   const extra: D1PreparedStatement[] = fresh.map((c, i) =>
@@ -170,6 +185,7 @@ export async function processComments(env: Env, comments: IgComment[], source: J
   for (const r of results) if (r.status === 'joined') extra.push(eventStmt(env, 'join', r.handle, { source, number: r.number }));
   const rows = results.filter((r) => r.status === 'joined' && r.row).map((r) => r.row!);
   await writeSnapshots(env, rows, extra);
+  if (report.replies) await noteReplies(env, report.replies);
   return report;
 }
 
@@ -215,7 +231,7 @@ export async function pollComments(env: Env) {
     }
   }
   const report = await processComments(env, comments, 'comment', ig);
-  const catchUp = await replyToMissed(env, comments, ig, Math.max(0, intVar(env.IG_REPLY_MAX_PER_RUN, 5) - report.replies));
+  const catchUp = await replyToMissed(env, comments, ig, await replyAllowance(env));
   const town = await processTownComments(env, comments);
   const cast = await processCastComments(env, comments);
   const closed = await closeDuePolls(env);
@@ -452,14 +468,17 @@ export async function replyToMissed(env: Env, comments: IgComment[], client: IgC
     const text = replyText(env, row.handle, row.number ?? undefined, row.result === 'exists');
     if (dryRun) { out.planned.push({ handle: row.handle, text }); continue; }
     try {
+      if (out.replied) await humanPause();
       await client.post(`${row.comment_id}/replies`, { message: text });
       await env.DB.prepare('UPDATE processed_comments SET replied = 1 WHERE comment_id = ?1').bind(row.comment_id).run();
       out.replied++;
     } catch (err) {
       out.errors++;
       log('catch_up_reply_failed', { comment: row.comment_id, error: String(err) });
+      if (isCommentBlock(err)) { await pauseReplies(env, err); break; }
     }
   }
+  if (out.replied) await noteReplies(env, out.replied);
   return out;
 }
 
@@ -477,9 +496,72 @@ export async function repliesAdmin(env: Env, body: any) {
     perPost.push({ media: m.id, comments: (res.data ?? []).length });
     for (const c of res.data ?? []) comments.push({ id: c.id, text: String(c.text ?? ''), username: c.username, mediaId: m.id, repliedByUs: repliedByCity(env, c) });
   }
-  const missed = await replyToMissed(env, comments, ig, Math.min(Number(body?.max ?? 20), 25), !!body?.dryRun);
+  const allowance = body?.dryRun ? 25 : Math.min(Number(body?.max ?? 2), await replyAllowance(env));
+  const missed = await replyToMissed(env, comments, ig, allowance, !!body?.dryRun);
   const otherUnanswered = comments
     .filter((c) => c.username.toLowerCase() !== own && !c.repliedByUs && !matchesMoveIn(c.text))
     .map((c) => ({ username: c.username, text: c.text.slice(0, 80) }));
-  return { comments: comments.length, perPost, missed, otherUnanswered };
+  return { comments: comments.length, perPost, missed, otherUnanswered, pace: await replyStatus(env) };
 }
+
+// ---------------------------------------------------------------- reply pacing
+
+/**
+ * Instagram treats bursts of near-identical comments as spam and blocks the account from
+ * commenting. Replies therefore go out at a human pace (a few per run, seconds apart, a daily
+ * cap) and stop entirely for a while when Instagram says no, instead of retrying into the block.
+ */
+const PAUSE_FIRST_HOURS = 6;
+const PAUSE_MAX_HOURS = 48;
+
+async function metaGet(env: Env, keys: string[]): Promise<Record<string, string>> {
+  const r = await env.DB.prepare(`SELECT key, value FROM meta WHERE key IN (${keys.map(() => '?').join(',')})`).bind(...keys).all<{ key: string; value: string }>();
+  return Object.fromEntries(r.results.map((x) => [x.key, x.value]));
+}
+const metaSet = (env: Env, key: string, value: string) =>
+  env.DB.prepare('INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, value);
+
+export async function replyStatus(env: Env) {
+  const m = await metaGet(env, ['replies_paused_until', 'replies_pause_hours', 'replies_day', 'replies_count']);
+  const today = new Date().toISOString().slice(0, 10);
+  const pausedUntil = m.replies_paused_until && Date.parse(m.replies_paused_until) > Date.now() ? m.replies_paused_until : null;
+  return {
+    pausedUntil,
+    lastPauseHours: Number(m.replies_pause_hours ?? 0),
+    today: m.replies_day === today ? Number(m.replies_count ?? 0) : 0,
+    perRun: intVar(env.IG_REPLY_MAX_PER_RUN, 2),
+    perDay: intVar(env.IG_REPLY_MAX_PER_DAY, 80),
+  };
+}
+
+/** How many replies may go out right now. */
+async function replyAllowance(env: Env): Promise<number> {
+  const s = await replyStatus(env);
+  if (s.pausedUntil) return 0;
+  return Math.max(0, Math.min(s.perRun, s.perDay - s.today));
+}
+
+async function noteReplies(env: Env, n: number) {
+  const s = await replyStatus(env);
+  const today = new Date().toISOString().slice(0, 10);
+  const stmts = [metaSet(env, 'replies_day', today), metaSet(env, 'replies_count', String(s.today + n))];
+  // Replies are flowing again after a pause ended: the next block starts short. Not while a pause
+  // set in this same run is active.
+  if (!s.pausedUntil) stmts.push(metaSet(env, 'replies_pause_hours', '0'));
+  await env.DB.batch(stmts);
+}
+
+async function pauseReplies(env: Env, err: unknown) {
+  const s = await replyStatus(env);
+  const hours = s.lastPauseHours ? Math.min(PAUSE_MAX_HOURS, s.lastPauseHours * 2) : PAUSE_FIRST_HOURS;
+  const until = new Date(Date.now() + hours * 3600_000).toISOString();
+  await env.DB.batch([
+    metaSet(env, 'replies_paused_until', until),
+    metaSet(env, 'replies_pause_hours', String(hours)),
+    eventStmt(env, 'replies_paused', null, { until, hours, error: String(err).slice(0, 300) }),
+  ]);
+  log('replies_paused', { until, hours });
+}
+
+/** A few seconds between replies, like a person typing. */
+const humanPause = () => new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000));

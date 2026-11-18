@@ -69,6 +69,7 @@ const COMMENTS = {
 };
 let mockHits = 0;
 let published = null;
+const replyHits = [];
 const dmReplies = [];
 const mock = createServer((req, res) => mockHandler(req, res).catch((e) => { console.log('  mock error:', e); res.writeHead(500); res.end(); }));
 async function mockHandler(req, res) {
@@ -112,6 +113,13 @@ async function mockHandler(req, res) {
     const i = u.searchParams.get('after') ? Number(u.searchParams.get('after')) : 0;
     const next = i + 1 < pages.length;
     return send({ data: pages[i], paging: next ? { cursors: { after: String(i + 1) }, next: 'more' } : {} });
+  }
+  // Comment replies: the first goes through, then Instagram blocks the account (anti-spam).
+  const rep = /^\/v27\.0\/([^/]+)\/replies$/.exec(u.pathname);
+  if (rep && req.method === 'POST') {
+    replyHits.push({ comment: rep[1], message: u.searchParams.get('message') });
+    if (replyHits.length === 1) return send({ id: 'reply1' });
+    return send({ error: { message: 'This API call does not support the requested response format', type: 'OAuthException', code: 20, error_subcode: 1772107, error_user_title: 'Instagram Comment Not Added' } }, 400);
   }
   send({ error: { message: 'not found ' + u.pathname } }, 404);
 }
@@ -177,8 +185,10 @@ try {
   await waitFor(`${BASE}/api/city/manifest.json`);
 
   console.log('\nMOVE IN phrases');
-  const joinYes = ['MOVE IN', 'move in please!', 'Moving in 🙌', 'movein', 'Move me in', 'I want house', 'i want a house', 'give me a home', 'house pls', 'I want in', 'can i get a house?'];
-  const joinNo = ['love this town', 'so cozy', 'vote A', 'I dont want a house', 'not moving in lol', 'nice houses', 'my house is ugly', 'home sweet home', 'CAST ME'];
+  const joinYes = ['MOVE IN', 'move in please!', 'Moving in 🙌', 'movein', 'Move me in', 'I want house', 'i want a house', 'give me a home', 'house pls', 'I want in', 'can i get a house?',
+    'move inn', 'move innn', 'Moving innn', 'Moveee Innnn', 'Movie in', 'Movee me innn right now 😍😍', 'MOVE INNN 🤩', 'i neeed a house', 'i wanna home'];
+  const joinNo = ['love this town', 'so cozy', 'vote A', 'I dont want a house', 'not moving in lol', 'nice houses', 'my house is ugly', 'home sweet home', 'CAST ME',
+    'Please me', 'Can I be the mayor', 'the movie in theaters tonight was great', 'I dont need a house'];
   ok(joinYes.every(matchesMoveIn), 'every way of asking for a house joins', joinYes.filter((t) => !matchesMoveIn(t)));
   ok(!joinNo.some(matchesMoveIn), 'ordinary comments and refusals do not join', joinNo.filter(matchesMoveIn));
 
@@ -218,6 +228,12 @@ try {
   await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`);
   ({ data } = await loadCity());
   ok(data.residents.length === 54, 'second poll adds nobody (comments remembered)', data.residents.length);
+  ok(replyHits.length === 2 && replyHits[0].message.includes('\n') && /Follow/.test(replyHits[0].message), 'one welcome reply, then Instagram blocks the second', replyHits);
+  let pace = (await (await admin('/admin/replies', { dryRun: true })).json()).pace;
+  ok(!!pace?.pausedUntil && pace.lastPauseHours === 6, 'a comment block pauses replies for 6 hours', pace);
+  ok(replyHits.length === 2, 'no reply attempts while paused (the second poll stayed quiet)', replyHits.length);
+  r = await admin('/admin/replies', { max: 5 });
+  ok(replyHits.length === 2 && (await r.json()).missed.replied === 0, 'the admin catch-up also respects the pause', replyHits.length);
 
   console.log('\ntown: votes, mayor, growing houses');
   let town = await (await fetch(`${BASE}/api/city/town.json`)).json();
