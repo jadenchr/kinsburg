@@ -3,7 +3,7 @@
 // sneakers. Drawn in screen space at world scale (so the camera zoom sizes him like the houses),
 // flat colours with one darker side, a neutral ground shadow, no outlines or glow.
 
-export type JadiePose = 'idle' | 'walk' | 'wave' | 'jump' | 'point' | 'look';
+export type JadiePose = 'idle' | 'walk' | 'wave' | 'jump' | 'point' | 'look' | 'sixseven';
 
 const C = {
   beanie: '#d9473a', beanieBand: '#b5382d', beanieShade: '#bf3c31',
@@ -66,6 +66,8 @@ export function drawJadie(ctx: CanvasRenderingContext2D, sx: number, sy: number,
     if (side === 1 && pose === 'wave') ang = -2.5 + Math.sin(t * 10) * 0.35;
     if (side === 1 && pose === 'point') ang = -1.45;
     if (pose === 'jump') ang = side * -0.5 - 0.3;
+    // "six seven": both forearms out, palms up, bouncing up and down in turn (about 2.2 bounces/s)
+    if (pose === 'sixseven') ang = -1.25 + side * 0.42 * Math.sin(t * 2 * Math.PI * 2.2);
     ctx.save();
     ctx.translate(side * 6.9, -16.4);
     ctx.rotate(ang * side);
@@ -97,7 +99,7 @@ export function drawJadie(ctx: CanvasRenderingContext2D, sx: number, sy: number,
   arm(1, true);
 
   // head
-  const look = pose === 'look' ? Math.sin(t * 2.2) * 0.9 : 0;
+  const look = pose === 'look' ? Math.sin(t * 2.2) * 0.9 : pose === 'sixseven' ? Math.sin(t * 2 * Math.PI * 2.2) * 0.45 : 0;
   ctx.save();
   ctx.translate(look, 0);
   ctx.fillStyle = C.skin;

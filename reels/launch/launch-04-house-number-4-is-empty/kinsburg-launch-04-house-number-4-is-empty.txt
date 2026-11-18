@@ -11,7 +11,7 @@ Find your house: link in bio.
 ────────────────────────────────────────
 NOTES (don't paste anything below this line)
 
-Status: READY. Made from the live city on 17 Nov. It says 3 residents and house #4: true while kinsburg.com still shows 3 residents. If more people have moved in, re-render it first (npm run reel:launch -- --url https://kinsburg.com) so the numbers match.
+Status: POSTED (Day 1). It worked: the city went from 3 to 28 residents. Keep this folder as the record of what went out.
 Suggested slot: post this first, as Day 1.
 
 Files

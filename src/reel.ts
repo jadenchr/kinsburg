@@ -115,6 +115,8 @@ export interface ReelActor {
   id: 'jadie';
   keys: { t: number; at: string; dx?: number; dy?: number; pose?: JadiePose; face?: 1 | -1 }[];
   talk?: { from: number; to: number }[];
+  /** added to the animation clock (gestures, breathing), e.g. to end a looping reel on its first frame's pose */
+  clock?: number;
 }
 
 /** A name tag pinned above a home in a scripted reel (fades in and out, stays the same size on screen). */
@@ -438,7 +440,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
 
   const canvas = document.getElementById('city') as HTMLCanvasElement;
   // ── scripted camera (launch reels): set with window.kinsburgReel.setScript() ──
-  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[]; labels: ReelLabel[]; lifts?: number[]; actors: { id: string; keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1 }[]; talk: { from: number; to: number }[] }[]; ease: 'cubic' | 'sine' } | null = null;
+  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[]; labels: ReelLabel[]; lifts?: number[]; actors: { id: string; keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1 }[]; talk: { from: number; to: number }[]; clock: number }[]; ease: 'cubic' | 'sine' } | null = null;
   const resolveTarget = (spec: string): ReelTarget | null => {
     const id = normalise(spec);
     if (id === 'wide') return null;
@@ -510,7 +512,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         const talk = a.talk.some((r) => tt >= r.from && tt <= r.to);
-        drawJadie(ctx, W / 2 + (p.x - camera.x) * camera.zoom, H / 2 + (p.y - camera.y) * camera.zoom, camera.zoom, p.pose, tt, p.face, talk);
+        drawJadie(ctx, W / 2 + (p.x - camera.x) * camera.zoom, H / 2 + (p.y - camera.y) * camera.zoom, camera.zoom, p.pose, tt + a.clock, p.face, talk);
         ctx.restore();
       }
       if (script.labels.length) {
@@ -556,6 +558,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
       const actors = (s.actors ?? []).map((a) => ({
         id: a.id,
         talk: a.talk ?? [],
+        clock: a.clock ?? 0,
         keys: a.keys.map((k) => {
           const tg = resolveTarget(k.at);
           if (!tg) missingActors.push(k.at);

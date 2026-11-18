@@ -1,0 +1,31 @@
+6… 7. That's how many people live in this town. 🏡
+
+Kinsburg is a cozy isometric city where every house belongs to a real person on Instagram. Resident #67 became a photographer. House #68 is still empty.
+
+Comment MOVE IN and it's yours. Want to be in the next one? Comment CAST ME.
+
+#kinsburg #citybuilder #isometric #cozygames #67
+
+────────────────────────────────────────
+NOTES (don't paste anything below this line)
+
+Status: READY, but only while kinsburg.com has exactly 67 residents. The whole joke is the number, so post it fast. If #68 moves in first, it's no longer true; the script refuses to re-render unless the count is 67.
+Suggested slot: post now, ahead of the others (the number won't wait).
+
+It loops: the last frame lands back on the first (same shot, same pose), and the last line runs into the first: "…because right now, we're only… 6… 7." The music bed is cross-faded across the join, so there's no gap when Instagram replays it. Don't add a sound that ends with a fade-out in the app, or the loop breaks; a sound that keeps going works.
+
+Who's named: nobody but @jadiedevs. Resident #67 is shown by job only, because they haven't commented CAST ME.
+
+Files
+- Video: kinsburg-in-this-town-02-six-seven.mp4 (12.1 s, 1080×1920, Jadie's voice)
+- Cover: kinsburg-in-this-town-02-six-seven-cover.jpg (in Instagram: Edit cover → Add from camera roll)
+- Grid preview: kinsburg-in-this-town-02-six-seven-grid-preview.jpg (how the cover looks cropped on the profile grid)
+
+Hashtags: 5, Instagram's maximum since December 2025. #67 rides the meme in search; the rest match the series.
+
+Alt text (Advanced settings → Accessibility → Write alt text):
+Jadie, a small blocky character in a red beanie, does the "six seven" hand gesture in a cozy isometric town at night. The camera pulls out to show 67 gold markers over the houses, a sign for resident 67, a photographer, and an empty plot for house 68, then returns to Jadie doing the gesture again, so the video loops.
+
+After posting
+- Reply to the first comments within the first hour; replies count as comments too.
+- Run the comment check if you want houses to appear straight away.

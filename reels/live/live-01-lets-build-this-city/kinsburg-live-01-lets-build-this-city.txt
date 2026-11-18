@@ -1,0 +1,29 @@
+This city had 3 people. Now it has 28. 🏡
+
+Meet a few of the neighbours: @itsjadenchristy, @metabro.pov and me, @jadiedevs. Kinsburg is a cozy isometric city where every house belongs to a real person on Instagram, and most of the island is still empty, so let's build it together.
+
+Comment MOVE IN and house #29 is yours. Want to be in the next video? Comment CAST ME.
+
+#kinsburg #citybuilder #isometric #cozygames #buildinpublic
+
+────────────────────────────────────────
+NOTES (don't paste anything below this line)
+
+Status: READY. Made from the live city on 18 Nov. It says 28 residents and house #29: true while kinsburg.com shows 28 residents. If more people have moved in, re-render it first (npm run reel:launch -- --only L1 --url https://kinsburg.com), then change the two numbers in the caption above to match.
+Suggested slot: Day 3, after in-this-town-01.
+
+Who's named: @itsjadenchristy and @metabro.pov (you asked for them), and @jadiedevs. @metabro.pov hasn't commented CAST ME yet; worth asking them to, so their permission is on record. Everyone else appears only as a gold marker, with no name.
+
+Files
+- Video: kinsburg-live-01-lets-build-this-city.mp4 (10.6 s, 1080×1920, Jadie's voice)
+- Cover: kinsburg-live-01-lets-build-this-city-cover.jpg (in Instagram: Edit cover → Add from camera roll)
+- Grid preview: kinsburg-live-01-lets-build-this-city-grid-preview.jpg (how the cover looks cropped on the profile grid)
+
+Hashtags: 5, Instagram's maximum since December 2025. They mostly help people find the Reel in search, so the caption also says "cozy isometric city" in plain words.
+
+Alt text (Advanced settings → Accessibility → Write alt text):
+A cozy isometric town at night. Gold markers pop up over the houses as the population grows from 3 to 28. Jadie, a small blocky character in a red beanie, waves beside name cards for his neighbours, points at his own house, then walks to the next empty plot, house 29, ending on a MOVE IN comment bubble.
+
+After posting
+- Reply to the first comments within the first hour; replies count as comments too.
+- Run the comment check if you want houses to appear straight away.

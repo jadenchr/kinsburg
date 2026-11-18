@@ -12,19 +12,25 @@ Hashtag choices and what's working for similar accounts: [RESEARCH.md](RESEARCH.
 
 | Order | Reel | Status |
 |---|---|---|
-| Day 1 | [launch/launch-04-house-number-4-is-empty](launch/launch-04-house-number-4-is-empty) | **Ready.** Post while kinsburg.com still has 3 residents |
-| Day 2 | [in-this-town/in-this-town-01-rules-of-kinsburg](in-this-town/in-this-town-01-rules-of-kinsburg) | Add @jadiedevs to the city, then re-render |
+| Day 1 | [launch/launch-04-house-number-4-is-empty](launch/launch-04-house-number-4-is-empty) | **Posted.** The city went from 3 to 28 residents |
+| **Now** | [in-this-town/in-this-town-02-six-seven](in-this-town/in-this-town-02-six-seven) | **Ready, post first.** "6 7" only works while there are exactly 67 residents. Loops seamlessly |
+| Day 2 | [in-this-town/in-this-town-01-rules-of-kinsburg](in-this-town/in-this-town-01-rules-of-kinsburg) | **Ready.** Re-rendered from the live city with @jadiedevs as resident #4 |
+| Day 3 | [live/live-01-lets-build-this-city](live/live-01-lets-build-this-city) | **Ready.** Jadie's voice, hover cards for @itsjadenchristy, @metabro.pov and @jadiedevs |
 | Later | [launch/launch-01-yours-is-still-dark](launch/launch-01-yours-is-still-dark) | Re-render from the live city (this cut shows the demo city) |
 | Later | [launch/launch-02-comment-two-words](launch/launch-02-comment-two-words) | Re-render from the live city |
 | Later | [launch/launch-03-the-city-picks-your-job](launch/launch-03-the-city-picks-your-job) | Re-render once there are enough residents for four jobs |
 
-Re-render from the live city with:
+The two Ready Reels have the live numbers filmed in (28 residents, house #29). If more people move in before you post, re-render that one first.
+
+## Re-render from the live city
 
 ```bash
-npm run reel:launch -- --url https://kinsburg.com
+npm run reel:launch -- --only T1 --url https://kinsburg.com
 ```
 
-The new videos land in `out/launch/`. Copy them over the old ones in these folders.
+Use `--only D` for launch-04, `T1` for in-this-town-01, `T2` for in-this-town-02 (only at 67 residents), `L1` for live-01, `A`/`B`/`C` for launch-01 to 03; leave `--only` out to re-render launch-01 to 03.
+
+The new video, cover and grid preview go straight into the Reel's folder here, replacing the old ones. A caption you've already written is kept; the script prints the new caption so you can update its numbers.
 
 The daily Reel isn't kept here. GitHub records and posts it every day, and you can download each one for 14 days from Actions → Daily reel.
 

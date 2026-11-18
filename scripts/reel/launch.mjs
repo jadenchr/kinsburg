@@ -13,7 +13,8 @@
 //   • one text system: 1–3 word captions synced to the voice in a fixed slot, the last word in
 //     gold; a small info bar at the top; plate, comment bubble and card in one centre column
 //
-// Output in out/launch/: launch-A.mp4 (+ .jpg cover, .txt caption) … launch-C.mp4.
+// Output in the reels library (reels/README.md): reels/<series>/<folder>/ with the video, cover, grid
+// preview and caption (an existing hand-written caption is kept).
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,7 +26,13 @@ import { ambientArgs, parseArgs, probe, run, sleep } from './lib.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = parseArgs();
 const W = 1080, H = 1920, FPS = 30, XF = 0.5; // dissolve length (s)
-const OUT = join(ROOT, 'out', 'launch');
+const OUT = join(ROOT, 'reels'); // the reels library (reels/README.md): reels/<series>/<folder>/kinsburg-<folder>.*
+// where each reel goes in the library
+const FOLDER = {
+  A: 'launch/launch-01-yours-is-still-dark', B: 'launch/launch-02-comment-two-words', C: 'launch/launch-03-the-city-picks-your-job',
+  D: 'launch/launch-04-house-number-4-is-empty', T1: 'in-this-town/in-this-town-01-rules-of-kinsburg', L1: 'live/live-01-lets-build-this-city',
+  T2: 'in-this-town/in-this-town-02-six-seven',
+};
 const ONLY = args.only ? String(args.only).toUpperCase() : null;
 const BASE = (args.url ?? process.env.KINSBURG_URL ?? '').replace(/\/+$/, '');
 const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
@@ -168,7 +175,10 @@ async function film(page, tmp, name, shot) {
 }
 
 /** Shots joined by dissolves (each shot starts at `at`), every overlay on the global timeline, narration over a quiet bed. */
-async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, name = `launch-${id}` }) {
+async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, loop = false }) {
+  const dir = join(OUT, FOLDER[id] ?? `drafts/${id}`);
+  const name = `kinsburg-${(FOLDER[id] ?? id).split('/').pop()}`;
+  mkdirSync(dir, { recursive: true });
   const inputs = shots.flatMap((s) => ['-i', s.file]);
   const vchain = [];
   let last = '0:v';
@@ -204,21 +214,37 @@ async function finish(tmp, id, { shots, overlays, voice, duration, caption, cove
   }
   vchain.push(`[${last}]format=yuv420p[vout]`);
   const bed = join(tmp, `${id}-bed.wav`);
-  await run(FFMPEG, ambientArgs(duration, bed, id.charCodeAt(0)));
+  if (!loop) await run(FFMPEG, ambientArgs(duration, bed, id.charCodeAt(0)));
+  else {
+    // seamless loop: render the bed longer with no fades, then cross-fade its tail into its start,
+    // so the last sample flows straight into the first when Instagram repeats the video
+    const X = 1.6, long = join(tmp, `${id}-bed-long.wav`);
+    const args = ambientArgs(duration + X, long, id.charCodeAt(0)).map((a) => (typeof a === 'string' ? a.replace(/afade=t=in:d=[\d.]+,afade=t=out:st=[\d.]+:d=[\d.]+,/, '') : a));
+    await run(FFMPEG, args);
+    const D = duration.toFixed(3);
+    await run(FFMPEG, ['-hide_banner', '-y', '-i', long, '-filter_complex',
+      `[0]atrim=0:${D},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${X}:curve=qsin[m];[0]atrim=${D}:${(duration + X).toFixed(3)},asetpts=PTS-STARTPTS,afade=t=out:st=0:d=${X}:curve=qsin,apad=whole_dur=${D}[t];[m][t]amix=inputs=2:normalize=0[o]`,
+      '-map', '[o]', '-c:a', 'pcm_s16le', bed]);
+  }
   const vo = k, bd = k + 1;
   const achain = `[${vo}:a]apad,atrim=0:${duration}[vo];[${bd}:a]volume=0.22[bed];[vo][bed]amix=inputs=2:normalize=0,alimiter=limit=0.89[aout]`;
-  const mp4 = join(OUT, `${name}.mp4`);
+  const mp4 = join(dir, `${name}.mp4`);
   await run(FFMPEG, ['-hide_banner', '-y', ...inputs, ...ovIn, '-i', voice.wav, '-i', bed,
     '-filter_complex', vchain.join(';') + ';' + achain, '-map', '[vout]', '-map', '[aout]', '-t', duration.toFixed(3), '-r', String(FPS),
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-maxrate', '8M', '-bufsize', '16M', '-pix_fmt', 'yuv420p', '-color_range', 'tv',
     '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', mp4]);
-  writeFileSync(join(OUT, `${name}.txt`), caption + '\n');
+  const capFile = join(dir, `${name}.txt`);
+  if (!existsSync(capFile)) writeFileSync(capFile, caption + '\n');
+  else log(`kept the caption in ${relative(ROOT, capFile)}; check its numbers against this render. Generated caption:\n${caption}`);
   if (coverHtml) {
     // a cover with its own title (the grid shows the cover, not the first frame)
     const ov = await png(join(tmp, `${id}-cover-text.png`), coverHtml);
     const bg = coverBg ? ['-i', coverBg] : ['-ss', String(coverAt), '-i', mp4]; // a still made for the cover, or a frame of the reel
-    await run(FFMPEG, ['-hide_banner', '-y', ...bg, '-i', ov, '-filter_complex', '[0:v][1:v]overlay=0:0', '-frames:v', '1', '-q:v', '2', join(OUT, `${name}.jpg`)]);
-  } else await run(FFMPEG, ['-hide_banner', '-y', '-ss', String(coverAt), '-i', mp4, '-frames:v', '1', '-q:v', '3', join(OUT, `${name}.jpg`)]);
+    await run(FFMPEG, ['-hide_banner', '-y', ...bg, '-i', ov, '-filter_complex', '[0:v][1:v]overlay=0:0', '-frames:v', '1', '-q:v', '2', join(dir, `${name}-cover.jpg`)]);
+  } else await run(FFMPEG, ['-hide_banner', '-y', '-ss', String(coverAt), '-i', mp4, '-frames:v', '1', '-q:v', '3', join(dir, `${name}-cover.jpg`)]);
+  // how the cover looks as a profile-grid tile (Instagram keeps the middle 3:4)
+  await run(FFMPEG, ['-hide_banner', '-y', '-i', join(dir, `${name}-cover.jpg`), '-f', 'lavfi', '-i', 'color=c=0x2b2f36:s=386x514', '-f', 'lavfi', '-i', 'color=c=0x8a6f5a:s=386x514',
+    '-filter_complex', '[0]crop=1080:1440:0:240,scale=386:514[t];[1][t][2]hstack=3', '-frames:v', '1', join(dir, `${name}-grid-preview.jpg`)]);
   const info = await probe(mp4, process.env.FFPROBE ?? 'ffprobe').catch((e) => ({ ok: false, error: e.message }));
   log(`${relative(ROOT, mp4)}  ${info.ok ? '✓ Instagram specs' : '✗ check specs ' + JSON.stringify(info)}  ${duration.toFixed(1)} s`);
 }
@@ -562,7 +588,7 @@ async function reelT1({ tmp, page, R, cardOf }) {
   overlays.push({ png: b, from: ls[5].start, to: D, fade: 0.2 });
 
   await finish(tmp, 'T1', {
-    name: 'town-facts-01', xf,
+    xf,
     shots, overlays, voice: v, duration: D,
     caption: `In this town… 🏡 Rules of Kinsburg, part 1.\n\nEvery house here belongs to a real person on Instagram. Comment MOVE IN and the city builds yours: a street address, a job it picks for you, a resident number that's yours forever, and lights that turn on when it gets dark where you live.\n\nWant to be in the next one? Comment CAST ME.`,
     coverBg: await thumbStill(page, tmp, 'T1', { target: 'actor:jadie', zoom: 8.2, y: 0.74, rings: [JADIE], actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'wave' }, { t: 1, ...home, pose: 'wave' }] }] }),
@@ -650,7 +676,7 @@ async function reelL1({ tmp, page, R }) {
   overlays.push({ png: await bubble(tmp, 'L1', 660), from: ls[6].start, to: D, fade: 0.25 });
 
   await finish(tmp, 'L1', {
-    name: 'build-01', xf,
+    xf,
     shots, overlays, voice: v, duration: D,
     caption: `This city had ${first} people. Now it has ${n}. 🏡\n\nMeet a few of the neighbours: @${N.map((r) => r.id).join(', @')} and me, @${JADIE}. Every house here is a real person on Instagram, and most of the island is still empty, so let's build it together.\n\nComment MOVE IN and house #${next} is yours. Want to be in the next video? Comment CAST ME.`,
     coverBg: await thumbStill(page, tmp, 'L1', { target: mid.id, zoom: 1.15, y: 0.72, rings: R.map((r) => r.id) }),
@@ -658,6 +684,96 @@ async function reelL1({ tmp, page, R }) {
   <div style="font-size:120px;line-height:1">${first} people</div>
   <div style="font-size:300px;line-height:.9;color:${C.gold};letter-spacing:-.03em">→ ${n}</div>
   <div style="font-size:84px;line-height:1.05;margin-top:14px;text-wrap:balance">let's build this city</div></div>`,
+  });
+}
+
+// ── "In this town" #2: six seven (only while the city has exactly 67 residents) ──
+// The "6-7" meme: Jadie says "six, seven" bouncing his palms. Built as a seamless loop: the last shot
+// lands on the first frame (same camera, pose and gesture phase), the last line runs into the first
+// ("…we're only" → "six, seven"), and the music bed's tail is cross-faded into its start.
+async function reelT2({ tmp, page, R }) {
+  const n = R.length;
+  if (n !== 67 && !args.force) throw new Error(`the city has ${n} residents, not 67: this one only works at 67 (pass --force to render anyway)`);
+  const J = R.find((r) => r.id === JADIE);
+  if (!J) throw new Error('@jadiedevs is not a resident');
+  const last = R[n - 1], next = n + 1;
+  const job = last.job.toLowerCase();
+  const an = /^[aeiou]/.test(job) ? 'an' : 'a';
+  const v = await narrate(tmp, 'T2', [
+    { text: '*6*… *7*.', say: 'Six, seven.', gap: 0.3 },
+    { text: "That's how many people live in this town.", gap: 0.3 },
+    { text: `Resident *#${n}*? The city made them ${an} *${job}*.`, say: `Resident number sixty-seven? The city made them ${an} ${job}.`, gap: 0.3 },
+    { text: 'Every comment builds a house.', gap: 0.3 },
+    { text: `House *#${next}* is still empty.`, say: 'House number sixty-eight is still empty.', gap: 0.3 },
+    { text: "So comment MOVE IN, because right now, we're only…", say: "So comment, move in. Because right now, we're only", gap: 0.04 },
+  ], JADIE_VOICE);
+  const ls = v.lines, D = v.duration, xf = 0.3;
+  const cuts = [0, ls[2].start - 0.2, ls[3].start - 0.2, ls[4].start - 0.2, ls[5].start - 0.2, D];
+  const home = { at: JADIE, dx: -36, dy: 18 }, spot = { at: 'next', dx: -36, dy: 18 };
+  const LOOP_CAM = { target: 'actor:jadie', zoom: 9.4, y: 0.6 }; // first frame = last frame
+  const shot = async (i, build) => {
+    const d = cuts[i + 1] - cuts[i] + (i < cuts.length - 2 ? xf : 0);
+    const loc = (x) => x - cuts[i];
+    const talk = ls.filter((l) => l.end > cuts[i] && l.start < cuts[i + 1]).map((l) => ({ from: loc(l.start), to: loc(l.end) }));
+    const s = build(d, loc);
+    return { file: await film(page, tmp, `T2-${i}`, { duration: d, ease: 'sine', hours: [{ t: 0, h: 22 }], ...s, actors: (s.actors ?? []).map((a) => ({ ...a, talk })) }), at: cuts[i] };
+  };
+  const shots = [];
+  // 1 · "six, seven" in close-up, then the pull out over 67 gold markers
+  shots.push(await shot(0, (d, loc) => {
+    const out0 = loc(ls[0].end) + 0.15;
+    return {
+      keys: [{ t: 0, ...LOOP_CAM }, { t: out0, ...LOOP_CAM }, { t: Math.min(d, out0 + 2.2), target: JADIE, zoom: 0.95, y: 0.55 }, { t: d, target: JADIE, zoom: 0.92, y: 0.55 }],
+      actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'sixseven' }, { t: out0, ...home, pose: 'sixseven' }, { t: out0 + 0.01, ...home, pose: 'wave' }, { t: d, ...home, pose: 'wave' }] }],
+      rings: R.map((r, i) => ({ id: r.id, from: out0 + 0.3 + (i / n) * 1.6 })),
+    };
+  }));
+  // 2 · resident #67's house (no name: they haven't commented CAST ME), Jadie pointing at it
+  shots.push(await shot(1, (d) => ({
+    keys: [{ t: 0, target: last.id, zoom: 6.2, y: 0.64 }, { t: d, target: last.id, zoom: 6.8, y: 0.64 }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, at: last.id, dx: -40, dy: 26, pose: 'point', face: 1 }, { t: d, at: last.id, dx: -40, dy: 26, pose: 'point', face: 1 }] }],
+    rings: [{ id: last.id, from: 0.1 }],
+  })));
+  // 3 · every comment builds a house: the newest homes light up gold one after another
+  shots.push(await shot(2, (d) => ({
+    keys: [{ t: 0, target: last.id, zoom: 2.6, y: 0.56 }, { t: d, target: last.id, zoom: 2.2, y: 0.56 }],
+    rings: R.slice(-12).map((r, i) => ({ id: r.id, from: 0.15 + i * 0.12 })),
+  })));
+  // 4 · the next empty plot: Jadie walks up and points
+  shots.push(await shot(3, (d) => {
+    const arrive = Math.min(d - 0.4, 1.2);
+    return {
+      keys: [{ t: 0, target: 'actor:jadie', zoom: 7.2, y: 0.62 }, { t: arrive, target: 'actor:jadie', zoom: 7.4, y: 0.62 }, { t: d, target: 'actor:jadie', zoom: 7.7, y: 0.62 }],
+      actors: [{ id: 'jadie', keys: [{ t: 0, at: 'next', dx: -96, dy: 48, pose: 'idle' }, { t: arrive, ...spot, pose: 'idle' }, { t: arrive + 0.15, ...spot, pose: 'point', face: 1 }, { t: d, ...spot, pose: 'point', face: 1 }] }],
+      rings: [{ id: 'next', from: arrive - 0.35 }],
+    };
+  }));
+  // 5 · back home: he waves, then starts "six seven" exactly as the video began (the loop point)
+  shots.push(await shot(4, (d, loc) => {
+    const six = Math.max(0.6, loc(ls[5].words.find((w) => /^only/i.test(w.w))?.start ?? ls[5].start + 1.5) - 0.35);
+    return {
+      keys: [{ t: 0, target: 'actor:jadie', zoom: 7.8, y: 0.6 }, { t: Math.max(0.5, d - 1.2), ...LOOP_CAM }, { t: d, ...LOOP_CAM }],
+      // clock: -d makes the gesture's phase at the last frame equal to the first frame's
+      actors: [{ id: 'jadie', clock: -d, keys: [{ t: 0, ...home, pose: 'wave' }, { t: six, ...home, pose: 'wave' }, { t: six + 0.01, ...home, pose: 'sixseven' }, { t: d, ...home, pose: 'sixseven' }] }],
+    };
+  }));
+
+  const right = `${n.toLocaleString('en-US')} residents`;
+  const overlays = await common(tmp, 'T2', v, right, { title: 'in this town', words: 1 });
+  overlays.push({ png: await sign(tmp, 'T2', `Resident #${n}`, last.job), from: cuts[1] + 0.35, to: cuts[2], fade: 0.2 });
+  overlays.push({ png: await sign(tmp, 'T2', `House #${next}`, 'Still empty'), from: cuts[3] + 1.1, to: cuts[4], fade: 0.2 });
+  const because = ls[5].words.find((w) => /^because/i.test(w.w))?.start ?? ls[5].start + 1;
+  overlays.push({ png: await bubble(tmp, 'T2', 660), from: ls[5].start, to: because, fade: 0.2 });
+
+  await finish(tmp, 'T2', {
+    xf, loop: true,
+    shots, overlays, voice: v, duration: D,
+    caption: `6… 7. That's how many people live in this town. 🏡\n\nKinsburg is a cozy isometric city where every house belongs to a real person on Instagram. Resident #${n} became ${an} ${job}. House #${next} is still empty.\n\nComment MOVE IN and it's yours. Want to be in the next one? Comment CAST ME.\n\n#kinsburg #citybuilder #isometric #cozygames #67`,
+    coverBg: await thumbStill(page, tmp, 'T2', { target: 'actor:jadie', zoom: 8.2, y: 0.74, actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'sixseven' }, { t: 1, ...home, pose: 'sixseven' }] }] }),
+    coverHtml: `<div style="position:absolute;left:60px;right:60px;top:${THUMB.top}px;text-align:center;color:${C.white};font-weight:900;text-transform:uppercase;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 34px rgba(11,20,48,.6)">
+  <div style="font-size:112px;line-height:1">In this town</div>
+  <div style="font-size:330px;line-height:.88;color:${C.gold};letter-spacing:-.03em">6 7</div>
+  <div style="font-size:84px;line-height:1.05;margin-top:10px">people live here</div></div>`,
   });
 }
 
@@ -677,7 +793,7 @@ try {
   };
   const right = `${R.length.toLocaleString('en-US')} residents`;
   log(`${R.length} residents${demo ? ' (sample residents: re-run with --url after launch)' : ''}`);
-  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1], ['L1', reelL1]]) {
+  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1], ['L1', reelL1], ['T2', reelT2]]) {
     if (ONLY ? ONLY !== id : !['A', 'B', 'C'].includes(id)) continue; // D and the series only on request
     const t0 = Date.now();
     await make({ tmp, page, R, right, cardOf });

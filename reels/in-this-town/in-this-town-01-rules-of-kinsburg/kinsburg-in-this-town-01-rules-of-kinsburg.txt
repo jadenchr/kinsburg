@@ -11,12 +11,11 @@ Want to be in part 2? Comment CAST ME.
 ────────────────────────────────────────
 NOTES (don't paste anything below this line)
 
-Status: RE-RENDER BEFORE POSTING. This cut shows "4 residents" with @jadiedevs as resident #4, but @jadiedevs isn't on the live map yet (kinsburg.com has 3 residents), and Reel launch-04 says house #4 is still empty.
-Do this after launch-04 is posted: add @jadiedevs to the live city (admin join, see docs/in-this-town.md), then re-render from the live city: npm run reel:launch -- --url https://kinsburg.com. The numbers will then match whatever house he gets.
+Status: READY. Re-rendered from the live city on 18 Nov with @jadiedevs as the real resident #4 (he's a Tailor). It shows 28 residents and "house #29 is still empty": true while kinsburg.com shows 28 residents. If more people have moved in, re-render first: npm run reel:launch -- --only T1 --url https://kinsburg.com
 Suggested slot: Day 2.
 
 Files
-- Video: kinsburg-in-this-town-01-rules-of-kinsburg.mp4 (11.8 s, 1080×1920)
+- Video: kinsburg-in-this-town-01-rules-of-kinsburg.mp4 (12.1 s, 1080×1920)
 - Cover: kinsburg-in-this-town-01-rules-of-kinsburg-cover.jpg (in Instagram: Edit cover → Add from camera roll)
 - Grid preview: kinsburg-in-this-town-01-rules-of-kinsburg-grid-preview.jpg (how the cover looks cropped on the profile grid)
 
