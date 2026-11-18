@@ -13,7 +13,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cityDataFromCompact, decodeShards, planRequests } from '../../shared/residents-format.mjs';
+import { cityDataFromCompact, decodeShards, matchesMoveIn, planRequests } from '../../shared/residents-format.mjs';
 import { validateCityData } from '../../shared/city-layout.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -175,6 +175,12 @@ try {
   wrangler.stderr.on('data', (d) => (wlog += d));
   wrangler.on('exit', (c) => c && console.log('wrangler exited', c, '\n' + wlog.slice(-2000)));
   await waitFor(`${BASE}/api/city/manifest.json`);
+
+  console.log('\nMOVE IN phrases');
+  const joinYes = ['MOVE IN', 'move in please!', 'Moving in 🙌', 'movein', 'Move me in', 'I want house', 'i want a house', 'give me a home', 'house pls', 'I want in', 'can i get a house?'];
+  const joinNo = ['love this town', 'so cozy', 'vote A', 'I dont want a house', 'not moving in lol', 'nice houses', 'my house is ugly', 'home sweet home', 'CAST ME'];
+  ok(joinYes.every(matchesMoveIn), 'every way of asking for a house joins', joinYes.filter((t) => !matchesMoveIn(t)));
+  ok(!joinNo.some(matchesMoveIn), 'ordinary comments and refusals do not join', joinNo.filter(matchesMoveIn));
 
   console.log('\ncity API');
   let { manifest, data } = await loadCity();

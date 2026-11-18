@@ -66,8 +66,14 @@ export function isValidHandle(h) {
  * "𝐌𝐎𝐕𝐄 𝐈𝐍" (NFKC folds styled letters). "remove input" does not match.
  */
 export function matchesMoveIn(text) {
-  const t = String(text ?? '').normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ');
-  return /(^| )move ?in( |$)/.test(t);
+  const t = ` ${String(text ?? '').normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ').trim()} `;
+  if (/ (don t|dont|not|never|won t|wont) /.test(t) && !/ move ?in /.test(t)) return false;
+  return (
+    / (move|moving|moved|movin) ?(me )?in /.test(t) || // MOVE IN, moving in, move me in, movein
+    / (i |me )?(want|need|wanna|give me|get me|can i get|can i have|i d like)( a| an| my)? (house|home|plot) /.test(t) ||
+    / (house|home) (please|pls|plz) /.test(t) ||
+    / i want in /.test(t)
+  );
 }
 
 /** "CAST ME" anywhere in a comment: permission to appear in videos (independent of MOVE IN). */

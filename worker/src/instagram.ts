@@ -15,6 +15,8 @@ export interface IgComment {
   username: string;
   mediaId: string;
   igUserId?: string;
+  /** The city account already replied under this comment (from the comment's `replies` field). */
+  repliedByUs?: boolean;
 }
 
 /** Free plan: 50 external subrequests per invocation. Keep IG calls well under it. */
@@ -76,6 +78,13 @@ const REPLIES = [
   'Fresh paint, new neighbour 🎨 #{n}',
 ];
 
+// For a resident who comments MOVE IN again.
+const ALREADY_HERE = [
+  'You already live here ✨ #{n}',
+  'Still home sweet home 🏡 #{n}',
+  'Your keys still work 🔑 #{n}',
+];
+
 // A gentle reason to follow, never a condition (Instagram forbids rewarding follows).
 const FOLLOW_NUDGES = [
   'Follow to watch your street light up 🌙',
@@ -83,10 +92,11 @@ const FOLLOW_NUDGES = [
   'Follow to see the town grow ✨',
 ];
 
-function replyText(_env: Env, handle: string, n: number | undefined): string {
+function replyText(_env: Env, handle: string, n: number | undefined, already = false): string {
   const i = n ?? handle.length;
-  const greeting = REPLIES[i % REPLIES.length];
-  const line1 = n ? greeting.replace('{n}', String(n)) : greeting.replace(/,? ?(House )?#\{n\}( is yours)?/, '');
+  const list = already ? ALREADY_HERE : REPLIES;
+  const greeting = list[i % list.length];
+  const line1 = n ? greeting.replace('{n}', String(n)) : greeting.replace(/,? ?(House )?#\{n\}( is yours)?/, '').trim();
   const nudge = FOLLOW_NUDGES[Math.floor(i / REPLIES.length) % FOLLOW_NUDGES.length];
   return `${line1}\n${nudge}`;
 }
@@ -187,12 +197,12 @@ export async function pollComments(env: Env) {
     let after: string | undefined;
     for (let page = 0; page < MAX_PAGES_PER_MEDIA; page++) {
       try {
-        const params: Record<string, string> = { fields: 'id,text,username,timestamp', limit: '50' };
+        const params: Record<string, string> = { fields: 'id,text,username,timestamp,replies{username}', limit: '50' };
         if (after) params.after = after;
         const res = await ig.get(`${m.id}/comments`, params);
         for (const c of Array.isArray(res?.data) ? res.data : []) {
           if (c && typeof c.id === 'string' && typeof c.username === 'string') {
-            comments.push({ id: c.id, text: String(c.text ?? ''), username: c.username, mediaId: m.id });
+            comments.push({ id: c.id, text: String(c.text ?? ''), username: c.username, mediaId: m.id, repliedByUs: repliedByCity(env, c) });
           }
         }
         after = res?.paging?.next ? res?.paging?.cursors?.after : undefined;
@@ -205,11 +215,12 @@ export async function pollComments(env: Env) {
     }
   }
   const report = await processComments(env, comments, 'comment', ig);
+  const catchUp = await replyToMissed(env, comments, ig, Math.max(0, intVar(env.IG_REPLY_MAX_PER_RUN, 5) - report.replies));
   const town = await processTownComments(env, comments);
   const cast = await processCastComments(env, comments);
   const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, pollsClosed: closed, ...report };
+  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
@@ -409,4 +420,66 @@ async function facebookWhoami(env: Env, token: string, candidate?: unknown) {
   }
   if (!out.user_id) out.hint = 'The token reaches no Instagram account: assign @kinsburgtown to this system user in Meta Business settings.';
   return out;
+}
+
+// ---------------------------------------------------------------- missed replies
+
+/** True when the city account already replied under this comment (Graph `replies{username}`). */
+function repliedByCity(env: Env, c: any): boolean {
+  const own = env.CITY_ACCOUNT.toLowerCase();
+  return Array.isArray(c?.replies?.data) && c.replies.data.some((r: any) => String(r?.username ?? '').toLowerCase() === own);
+}
+
+/**
+ * Replies to MOVE IN comments that were handled without a reply: comments from before replies
+ * were switched on, the overflow past the per-run cap, and residents who commented MOVE IN again.
+ * Gated twice: processed_comments.replied must be 0 and the comment must not already carry a
+ * reply from the city account. Other comments never get an automatic reply.
+ */
+export async function replyToMissed(env: Env, comments: IgComment[], client: IgClient, budget: number, dryRun = false) {
+  const out = { candidates: 0, replied: 0, errors: 0, planned: [] as Array<{ handle: string; text: string }> };
+  if (env.IG_REPLY_ENABLED !== 'true' || budget <= 0) return out;
+  const own = env.CITY_ACCOUNT.toLowerCase();
+  const moveIns = comments.filter((c) => c.username.toLowerCase() !== own && !c.repliedByUs && matchesMoveIn(c.text));
+  if (!moveIns.length) return out;
+  const ids = moveIns.map((c) => c.id).slice(0, 90);
+  const rows = (await env.DB.prepare(
+    `SELECT p.comment_id, p.handle, p.result, r.number FROM processed_comments p LEFT JOIN residents r ON r.handle = p.handle
+     WHERE p.replied = 0 AND p.result IN ('joined', 'exists') AND p.comment_id IN (${ids.map(() => '?').join(',')})`,
+  ).bind(...ids).all<{ comment_id: string; handle: string; result: string; number: number | null }>()).results;
+  out.candidates = rows.length;
+  for (const row of rows.slice(0, budget)) {
+    const text = replyText(env, row.handle, row.number ?? undefined, row.result === 'exists');
+    if (dryRun) { out.planned.push({ handle: row.handle, text }); continue; }
+    try {
+      await client.post(`${row.comment_id}/replies`, { message: text });
+      await env.DB.prepare('UPDATE processed_comments SET replied = 1 WHERE comment_id = ?1').bind(row.comment_id).run();
+      out.replied++;
+    } catch (err) {
+      out.errors++;
+      log('catch_up_reply_failed', { comment: row.comment_id, error: String(err) });
+    }
+  }
+  return out;
+}
+
+/** Admin: list (dryRun) or send the missed replies now, and show other comments still unanswered. */
+export async function repliesAdmin(env: Env, body: any) {
+  const token = await getToken(env);
+  if (!token || !env.IG_USER_ID) return { error: 'Instagram not connected' };
+  const ig = new IgClient(env.IG_API_BASE, token);
+  const own = env.CITY_ACCOUNT.toLowerCase();
+  const media = (await ig.get(`${env.IG_USER_ID}/media`, { fields: 'id', limit: String(intVar(env.IG_MEDIA_LIMIT, 10)) })).data ?? [];
+  const comments: IgComment[] = [];
+  const perPost: Array<{ media: string; comments: number }> = [];
+  for (const m of media) {
+    const res = await ig.get(`${m.id}/comments`, { fields: 'id,text,username,replies{username}', limit: '50' });
+    perPost.push({ media: m.id, comments: (res.data ?? []).length });
+    for (const c of res.data ?? []) comments.push({ id: c.id, text: String(c.text ?? ''), username: c.username, mediaId: m.id, repliedByUs: repliedByCity(env, c) });
+  }
+  const missed = await replyToMissed(env, comments, ig, Math.min(Number(body?.max ?? 20), 25), !!body?.dryRun);
+  const otherUnanswered = comments
+    .filter((c) => c.username.toLowerCase() !== own && !c.repliedByUs && !matchesMoveIn(c.text))
+    .map((c) => ({ username: c.username, text: c.text.slice(0, 80) }));
+  return { comments: comments.length, perPost, missed, otherUnanswered };
 }

@@ -5,6 +5,7 @@
 //   POST /admin/perk    { handle, perk, remove? }        star | goldRoof | monument | street
 //   POST /admin/rebuild { shard? }                       rebuild snapshot shard(s) from the residents table
 //   POST /admin/check-comments                           run the comment poller now (/admin/poll is the vote poll)
+//   POST /admin/replies { dryRun?, max? }               reply to MOVE IN comments that were missed
 //   POST /admin/ig      { method, path, params } | { check } | { whoami } relay the daily Reel's Instagram calls
 //   GET  /admin/cast | POST /admin/cast { handle, remove? }   who may appear in videos (CAST ME)
 //   GET  /admin/stats
@@ -12,7 +13,7 @@ import { shardOf } from '../../shared/residents-format.mjs';
 import { checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
 import { safeEqual } from './crypto';
 import { type Env, json, shardSize } from './env';
-import { igRelay, pollComments } from './instagram';
+import { igRelay, pollComments, repliesAdmin } from './instagram';
 import { putMedia } from './media';
 import { townAdmin } from './town';
 import { castAdmin } from './cast';
@@ -87,6 +88,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       return castAdmin(env, req, body);
     case '/admin/check-comments':
       return json(await pollComments(env));
+    case '/admin/replies':
+      return json(await repliesAdmin(env, body));
     case '/admin/ig':
       return igRelay(env, body);
     default:
