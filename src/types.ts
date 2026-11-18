@@ -50,6 +50,8 @@ export interface Resident {
   follower?: boolean;
   /** Pet in the yard, if any (chosen by commenting PET DOG etc.). */
   pet?: Pet;
+  /** Town coins earned by responding to calls and working shifts. Pretend money, never sold. */
+  coins?: number;
 }
 
 export interface Street {

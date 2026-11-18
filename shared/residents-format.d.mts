@@ -9,7 +9,7 @@ export declare const PERKS: readonly Perk[];
 export declare const PERK_BIT: Readonly<Record<Perk, number>>;
 
 /** [handle, number, joinedDay, jobIndex, houseStyle, perkMask] */
-export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number, level?: number, follower?: number, pet?: number];
+export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number, level?: number, follower?: number, pet?: number, coins?: number];
 export declare const PETS: readonly ('none' | Pet)[];
 export declare const FREE_PETS: readonly Pet[];
 export declare const RARE_PETS: readonly Pet[];
@@ -70,6 +70,7 @@ export declare function encodeResident(r: {
   level?: number;
   follower?: boolean;
   pet?: Pet | number;
+  coins?: number;
 }): Row;
 export declare function decodeRow(row: Row): CompactResident;
 export declare function shardOf(number: number, shardSize?: number): number;

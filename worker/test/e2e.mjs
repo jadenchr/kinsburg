@@ -33,6 +33,7 @@ const VARS = {
   EDGE_CACHE: 'false',
   STRIPE_PERKS: JSON.stringify({ plink_star: 'star', plink_gold: 'goldRoof', plink_poster: 'poster', plink_owl: 'pet:owl' }),
   IG_DM_ENABLED: 'true',
+  SIM_RANDOM_INCIDENTS: 'false',
 };
 
 let failures = 0;
@@ -342,6 +343,55 @@ try {
   ok(r.status === 200 && (await resident('third_person'))?.job === 'Firefighter', 'admin can set a job past the weekly limit');
   ({ data } = await loadCity());
   try { validateCityData(data); ok(true, 'city still valid with jobs and pets'); } catch (e) { ok(false, 'city still valid with jobs and pets', String(e)); }
+
+  console.log('\nCity simulation');
+  const sim = async () => (await (await fetch(`${BASE}/api/city/town.json`)).json()).sim;
+  r = await admin('/admin/sim/tick', {});
+  let tick = await r.json();
+  ok(r.status === 200 && typeof tick.stats?.health === 'number', 'a tick runs and reports stats', tick);
+  await admin('/admin/job', { handle: 'new_person1', job: 'Firefighter' });
+  r = await admin('/admin/sim/start', { kind: 'fire', target: 'second.person' });
+  const fire = await r.json();
+  ok(r.status === 200 && fire.kind === 'fire' && fire.needed === 2 && fire.target === 'second.person', 'admin starts a fire at a house (2 firefighters needed)', fire);
+  let sv = await sim();
+  ok(sv.open.some((i) => i.id === fire.id && i.label === 'Kitchen fire'), 'town.json lists the open fire', sv.open);
+  await castHook([['c960', 'RESPOND 🚒', 'third_person'], ['c961', 'on my way!', 'lurker']]);
+  sv = await sim();
+  ok(sv.open.find((i) => i.id === fire.id)?.responders.join() === 'third_person', 'a firefighter responds; a non-resident does not count', sv.open);
+  await castHook([['c962', 'omw', 'new_person1']]);
+  sv = await sim();
+  const done = sv.recent.find((i) => i.id === fire.id);
+  ok(done?.status === 'resolved' && done.responders.length === 2 && !sv.open.some((i) => i.id === fire.id), 'the second firefighter resolves the fire', done);
+  ok((await resident('third_person'))?.coins === 10 && (await resident('new_person1'))?.coins === 10, 'both heroes earn 10 town coins');
+  ok(sv.ofTheWeek.some((h) => h.title.startsWith('KFD') && ['third_person', 'new_person1'].includes(h.handle)), 'KFD firefighter of the week', sv.ofTheWeek);
+  await castHook([['c962', 'omw', 'new_person1']]);
+  ok((await resident('new_person1'))?.coins === 10, 'an old RESPOND comment is not replayed');
+  await castHook([['c963', 'on duty', 'combo.person']]);
+  ok((await resident('combo.person'))?.coins === 2, 'RESPOND with no call to answer is a paid shift (2 coins)');
+  await castHook([['c964', 'respond', 'combo.person']]);
+  ok((await resident('combo.person'))?.coins === 2, 'one paid shift per day');
+  await admin('/admin/sim/start', { kind: 'burglary', target: 'combo.person', hours: -1 });
+  r = await admin('/admin/sim/start', { kind: 'fire', target: 'vet.newcomer', hours: -1 });
+  const late = await r.json();
+  tick = await (await admin('/admin/sim/tick', {})).json();
+  ok(tick.failed.length === 2, 'incidents past their deadline fail on the next tick', tick);
+  sv = await sim();
+  const repair = sv.open.find((i) => i.kind === 'repair' && i.target === 'vet.newcomer');
+  ok(!!repair && sv.recent.some((i) => i.id === late.id && i.status === 'failed'), 'a failed fire leaves damage for a carpenter to repair', sv.open);
+  await admin('/admin/job', { handle: 'owl.buyer', job: 'Carpenter' });
+  await castHook([['c965', 'respond', 'owl.buyer']]);
+  sv = await sim();
+  ok(!sv.open.some((i) => i.id === repair?.id) && (await resident('owl.buyer'))?.coins === 15, 'a carpenter repairs it and earns 15 coins');
+  r = await admin('/admin/coins', { handle: 'combo.person', add: 200 });
+  ok(r.status === 200 && (await r.json()).coins === 202, 'admin gives coins');
+  await castHook([['c966', 'PET OWL', 'combo.person']]);
+  const cp = await resident('combo.person');
+  ok(cp?.pet === 'owl' && cp?.coins === 52, 'a rare pet can be bought with 150 town coins', cp);
+  r = await admin('/admin/sim/tick', { force: true });
+  tick = await r.json();
+  ok(!!tick.started, 'a forced tick starts a random incident', tick);
+  ({ data } = await loadCity());
+  try { validateCityData(data); ok(true, 'city still valid with coins'); } catch (e) { ok(false, 'city still valid with coins', String(e)); }
 
   console.log('\nDMs (after App Review)');
   const dm = (sender, text) => {

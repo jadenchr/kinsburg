@@ -20,6 +20,8 @@ export interface Env {
   META_APP_ID?: string;
   IG_MEDIA_LIMIT: string;
   IG_REPLY_ENABLED: string;
+  /** "false" stops incidents starting on their own (tests; admin can still start them) */
+  SIM_RANDOM_INCIDENTS?: string;
   IG_REPLY_MAX_PER_RUN: string;
   IG_REPLY_MAX_PER_DAY?: string;
   /** "true" after App Review: join / move out by DM, with the follower badge */

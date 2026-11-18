@@ -5,6 +5,7 @@
 import { LEVEL_AT, levelFor } from '../../shared/residents-format.mjs';
 import type { Row } from '../../shared/residents-format.mjs';
 import { RESIDENT_COLS, checkHandle, eventStmt, joinMany, toRow, writeSnapshots } from './city';
+import { getSim } from './sim';
 import { type Env, json, log } from './env';
 import type { IgClient, IgComment } from './instagram';
 
@@ -240,7 +241,7 @@ export async function handleDms(env: Env, client: IgClient | undefined, messagin
     if (bad) {
       reply = `Sorry, we couldn't build a house for that username.`;
     } else if (wantsOut) {
-      const row = await env.DB.prepare(`UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, level = 0, follower = 0, engagement = 0, pet = 0, pets_owned = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`).bind(handle).first<any>();
+      const row = await env.DB.prepare(`UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, level = 0, follower = 0, engagement = 0, pet = 0, pets_owned = 0, coins = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`).bind(handle).first<any>();
       if (row) {
         await writeSnapshots(env, [toRow(row)], [eventStmt(env, 'move_out', handle, { source: 'dm' })]);
         report.movedOut++;
@@ -289,11 +290,12 @@ export async function privateReply(env: Env, client: IgClient, commentId: string
 /** GET /api/town.json: mayor, current and recent polls with tallies, sponsors, perk links. */
 export async function getTown(env: Env) {
   const now = nowIso();
-  const [mayor, settings, polls, sponsors] = await Promise.all([
+  const [mayor, settings, polls, sponsors, sim] = await Promise.all([
     getMeta<Mayor>(env, 'mayor'),
     getMeta<TownSettings>(env, 'town_settings'),
     env.DB.prepare(`SELECT * FROM polls WHERE status = 'open' OR id IN (SELECT id FROM polls WHERE status = 'closed' ORDER BY closes_at DESC LIMIT 1) ORDER BY closes_at`).all<PollRow>(),
     env.DB.prepare('SELECT name, message, url FROM sponsors WHERE starts_at <= ?1 AND ends_at > ?1 ORDER BY id DESC LIMIT 4').bind(now).all<{ name: string; message: string; url: string | null }>(),
+    getSim(env),
   ]);
   const withCounts = await Promise.all(polls.results.map(async (p) => publicPoll(p, await tally(env, p.id))));
   return {
@@ -304,6 +306,7 @@ export async function getTown(env: Env) {
     perkLinks: settings?.perkLinks ?? {},
     levelAt: LEVEL_AT,
     account: env.CITY_ACCOUNT,
+    sim,
   };
 }
 

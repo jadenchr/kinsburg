@@ -65,12 +65,13 @@ interface ResidentRow {
   level?: number;
   follower?: number;
   pet?: number;
+  coins?: number;
 }
-/** D1 row -> compact Row; the optional tail [level, follower, pet] is cut after its last non-zero value. */
+/** D1 row -> compact Row; the optional tail [level, follower, pet, coins] is cut after its last non-zero value. */
 export const toRow = (r: ResidentRow): Row =>
-  withTail([r.handle, r.number, r.joined_day, r.job, r.house_style, r.perks], [r.level ?? 0, r.follower ? 1 : 0, r.pet ?? 0]);
+  withTail([r.handle, r.number, r.joined_day, r.job, r.house_style, r.perks], [r.level ?? 0, r.follower ? 1 : 0, r.pet ?? 0, r.coins ?? 0]);
 /** Every column toRow() needs. */
-export const RESIDENT_COLS = 'handle, number, joined_day, job, house_style, perks, level, follower, pet';
+export const RESIDENT_COLS = 'handle, number, joined_day, job, house_style, perks, level, follower, pet, coins';
 
 const INSERT_RESIDENT = `
 INSERT INTO residents (number, handle, joined_day, job, house_style, perks, source, ig_user_id)

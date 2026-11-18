@@ -6,7 +6,10 @@
 //   • ≤ 2,200 characters, ≤ 5 hashtags (we use 3–5 as topic labels).
 //   • The MOVE IN call to action lives in the caption, never burned into the video.
 //   • New residents appear as plain names (no @-tags), at most a few.
+//   • Hero shout-outs (resolved incidents, see heroLines) name responders as plain names too.
 //   • No engagement bait: no "like to vote", no countdowns, no "tag 3 friends".
+
+import { INCIDENTS } from '../../shared/sim.mjs';
 
 const n = (x) => Number(x).toLocaleString('en-US');
 
@@ -77,6 +80,62 @@ SERIES['new-street'] = {
   hashtags: ['#citybuilder', '#cozygames', '#pixelcity', '#indiegame'],
 };
 
+const HERO_WINDOW_MS = 26 * 3600_000;
+const place = (t) => (t ? ` at ${t}'s house` : '');
+const HERO_TEXT = {
+  fire: (w, who, t) => `${w} KFD ${who} put out a kitchen fire${place(t)} 🚒`,
+  burglary: (w, who, t) => `${w} officers ${who} stopped a break-in${place(t)} 🚓`,
+  crash: (w, who, t) => `${w} ${who} cleared a fender-bender${place(t)} 🚗`,
+  flu: (w, who, _t, city) => `${w} ${who} got ${city} through flu week 🩺`,
+  lostpet: (w, who, t) => `${w} ${who} found a lost pet${place(t)} 🐾`,
+  exam: (w, who, _t, city) => `${w} ${who} got ${city} through exam week 📚`,
+  repair: (w, who, t) => `${w} ${who} repaired the storm damage${place(t)} 🔨`,
+};
+
+/** Incidents resolved in the last ~26 h, newest first (empty if town data is missing or old-format). */
+export function recentHeroes(sim, now = Date.now()) {
+  const list = Array.isArray(sim?.recent) ? sim.recent : [];
+  return list
+    .filter((i) => i && i.status === 'resolved' && i.closedAt && HERO_TEXT[i.kind] && Array.isArray(i.responders) && i.responders.length)
+    .filter((i) => now - Date.parse(i.closedAt) <= HERO_WINDOW_MS && Date.parse(i.closedAt) <= now + 3600_000)
+    .sort((a, b) => Date.parse(b.closedAt) - Date.parse(a.closedAt));
+}
+
+/** One or two short shout-out lines, one per incident kind (the newest of each kind). */
+export function heroLines(sim, city = 'Kinsburg', now = Date.now()) {
+  const seen = new Set();
+  const out = [];
+  for (const i of recentHeroes(sim, now)) {
+    if (seen.has(i.kind) || out.length >= 2) continue;
+    seen.add(i.kind);
+    const when = now - Date.parse(i.closedAt) < 10 * 3600_000 ? 'Today' : 'Last night';
+    out.push(HERO_TEXT[i.kind](when, nameList(i.responders, i.responders.length), i.target, city) + '.');
+  }
+  return out;
+}
+
+/** "Right now: a break-in at x's house needs 2 more police officers. Comment RESPOND." or ''. */
+export function openCall(sim, now = Date.now()) {
+  const open = (Array.isArray(sim?.open) ? sim.open : [])
+    .filter((i) => i && i.status === 'open' && INCIDENTS[i.kind] && Date.parse(i.deadline) > now)
+    .map((i) => ({ i, left: i.needed - (i.responders?.length ?? 0) }))
+    .filter((x) => x.left > 0)
+    .sort((a, b) => Date.parse(a.i.deadline) - Date.parse(b.i.deadline));
+  if (!open.length) return '';
+  const { i, left } = open[0];
+  const def = INCIDENTS[i.kind];
+  const jobs = def.jobs.map((j) => j.toLowerCase() + 's');
+  const who = jobs.length > 1 ? `${jobs.slice(0, -1).join(', ')} or ${jobs[jobs.length - 1]}` : jobs[0];
+  const what = i.label.toLowerCase();
+  return `Right now: ${article(what).toLowerCase()} ${what}${place(i.target)} needs ${left} more ${left === 1 ? who.replace(/s$/, '') : who}. Comment RESPOND.`;
+}
+
+/** Lines to slot in above the MOVE IN line; empty when there is no town data. */
+export function simLines(sim, city, now = Date.now()) {
+  if (!sim || typeof sim !== 'object' || !(Array.isArray(sim.recent) || Array.isArray(sim.open))) return [];
+  return [...heroLines(sim, city, now), 'Firefighters, police, doctors: comment RESPOND when the city needs you.', openCall(sim, now)].filter(Boolean);
+}
+
 const article = (w) => (/^[aeiou]/i.test(w) ? 'An' : 'A');
 
 /**
@@ -92,10 +151,14 @@ export const MAX_CAPTION = 2200;
 export const MAX_HASHTAGS = 5;
 
 /** Build the final caption text and check Instagram's limits. */
-export function buildCaption(seriesId, stats) {
+export function buildCaption(seriesId, stats, sim = null, now = Date.now()) {
   const series = SERIES[seriesId];
   if (!series) throw new Error(`Unknown series "${seriesId}". Known: ${Object.keys(SERIES).join(', ')}`);
-  const body = series.caption(stats).filter(Boolean).join(' ');
+  const lines = series.caption(stats).filter(Boolean);
+  // shout-outs go above the closing MOVE IN line, which stays last
+  const extra = simLines(sim, stats.city, now);
+  if (extra.length) lines.splice(Math.max(0, lines.length - 1), 0, ...extra);
+  const body = lines.join(' ');
   const tags = series.hashtags.slice(0, MAX_HASHTAGS);
   let text = `${body}\n\n${tags.join(' ')}`;
   if (text.length > MAX_CAPTION) text = text.slice(0, MAX_CAPTION - 1) + '…';

@@ -11,6 +11,7 @@ import {
   petBit,
   type Row,
 } from '../../shared/residents-format.mjs';
+import { PET_COIN_PRICE } from '../../shared/sim.mjs';
 import type { Pet } from '../../src/types';
 import { RESIDENT_COLS, checkHandle, eventStmt, joinMany, toRow, writeSnapshots } from './city';
 import { type Env, json } from './env';
@@ -31,6 +32,7 @@ interface LifeRow {
   job_changed_day: number | null;
   pet: number;
   pets_owned: number;
+  coins: number;
 }
 
 const MAX_PARAMS = 90;
@@ -80,7 +82,7 @@ export async function processLifeComments(env: Env, comments: IgComment[]) {
     const rr: D1PreparedStatement[] = [];
     for (let i = 0; i < handles.length; i += MAX_PARAMS) {
       const c = handles.slice(i, i + MAX_PARAMS);
-      rr.push(db.prepare(`SELECT handle, job, job_changed_day, pet, pets_owned FROM residents WHERE handle IN (${qs(c.length)})`).bind(...c));
+      rr.push(db.prepare(`SELECT handle, job, job_changed_day, pet, pets_owned, coins FROM residents WHERE handle IN (${qs(c.length)})`).bind(...c));
     }
     for (const r of await db.batch<LifeRow>(rr)) for (const x of r.results) out.set(x.handle, x);
     return out;
@@ -116,7 +118,13 @@ export async function processLifeComments(env: Env, comments: IgComment[]) {
     if (w.pet !== null) {
       const idx = w.pet === 'none' ? 0 : PETS.indexOf(w.pet);
       const allowed = idx === 0 || !RARE_PETS.includes(w.pet as Pet) || (r.pets_owned & petBit(w.pet as Pet)) !== 0;
-      if (!allowed) {
+      if (!allowed && r.coins >= PET_COIN_PRICE) {
+        // bought with town coins (the WHERE re-checks the balance)
+        stmts.push(db.prepare('UPDATE residents SET coins = coins - ?2, pets_owned = pets_owned | ?3, pet = ?4 WHERE handle = ?1 AND coins >= ?2').bind(handle, PET_COIN_PRICE, petBit(w.pet as Pet), idx));
+        stmts.push(eventStmt(env, 'pet_bought', handle, { pet: w.pet, source: 'coins', price: PET_COIN_PRICE }));
+        report.pets.push(`${handle}:${w.pet}`);
+        changed.add(handle);
+      } else if (!allowed) {
         report.locked.push(`${handle}:${w.pet}`);
         stmts.push(eventStmt(env, 'pet_locked', handle, { pet: w.pet }));
       } else if (idx !== r.pet) {

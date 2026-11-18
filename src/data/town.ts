@@ -1,4 +1,5 @@
-// Town info: mayor, polls with live tallies, sponsors and perk links.
+// Town info: mayor, polls with live tallies, sponsors, perk links and the city simulation.
+import type { IncidentKind, Stat } from '../../shared/sim.mjs';
 // Live from the Worker (/api/city/town.json); the static demo file /town.json otherwise.
 export interface TownPollOption {
   key: string;
@@ -17,6 +18,32 @@ export interface TownPoll {
   result: { winner: string | null; label: string | null } | null;
 }
 export type PerkKey = 'star' | 'goldRoof' | 'monument' | 'street' | 'poster';
+
+/** Something happening in town (rules in shared/sim.mjs). target = handle of the house it's at. */
+export interface TownIncident {
+  id: number;
+  kind: IncidentKind;
+  /** e.g. "Kitchen fire" */
+  label: string;
+  target: string | null;
+  needed: number;
+  status: 'open' | 'resolved' | 'failed';
+  createdAt: string;
+  deadline: string;
+  closedAt: string | null;
+  /** handles who responded, in order */
+  responders: string[];
+}
+export interface TownSim {
+  /** 0..100 */
+  stats: Record<Stat, number>;
+  /** city treasury, town coins */
+  treasury: number;
+  open: TownIncident[];
+  /** resolved or failed in the last 2 days, newest first */
+  recent: TownIncident[];
+  ofTheWeek: { title: string; handle: string; count: number }[];
+}
 export interface TownInfo {
   day: number;
   mayor: { handle: string; sinceDay: number } | null;
@@ -26,6 +53,8 @@ export interface TownInfo {
   /** comments needed for storey 2, 3, 4 */
   levelAt: number[];
   account: string;
+  /** the city simulation; missing on an older Worker */
+  sim?: TownSim;
 }
 
 const EMPTY: TownInfo = { day: 1, mayor: null, polls: [], sponsors: [], perkLinks: {}, levelAt: [3, 10, 30], account: 'kinsburgtown' };
@@ -34,6 +63,16 @@ async function getJSON(url: string): Promise<TownInfo> {
   const res = await fetch(url, { cache: 'no-cache' });
   if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) throw new Error(url);
   return { ...EMPTY, ...((await res.json()) as Partial<TownInfo>) };
+}
+
+/** The demo file's incident times are fixed; shift them so its newest call started just now. */
+function rebase(t: TownInfo & { generatedAt?: string }): TownInfo {
+  const at = t.generatedAt ? Date.parse(t.generatedAt) : NaN;
+  if (!t.sim || !Number.isFinite(at)) return t;
+  const shift = Date.now() - at - 60_000;
+  const move = (iso: string | null) => (iso ? new Date(Date.parse(iso) + shift).toISOString() : iso);
+  const fix = <T extends { createdAt: string; deadline: string; closedAt: string | null }>(i: T): T => ({ ...i, createdAt: move(i.createdAt)!, deadline: move(i.deadline)!, closedAt: move(i.closedAt) });
+  return { ...t, sim: { ...t.sim, open: t.sim.open.map(fix), recent: t.sim.recent.map(fix) } };
 }
 
 /** Never throws: an empty town just hides those sections. */
@@ -46,7 +85,7 @@ export async function loadTown(demo: boolean): Promise<TownInfo> {
     }
   }
   try {
-    return await getJSON('/town.json');
+    return rebase(await getJSON('/town.json'));
   } catch {
     return EMPTY;
   }

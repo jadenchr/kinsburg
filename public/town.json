@@ -1,6 +1,9 @@
 {
   "day": 1,
-  "mayor": { "handle": "kinsburgtown", "sinceDay": 1 },
+  "mayor": {
+    "handle": "kinsburgtown",
+    "sinceDay": 1
+  },
   "polls": [
     {
       "id": "first-build",
@@ -10,15 +13,184 @@
       "closesAt": "2026-11-19T18:00:00Z",
       "total": 214,
       "options": [
-        { "key": "A", "label": "A pier for the lighthouse", "votes": 88 },
-        { "key": "B", "label": "A night market", "votes": 97 },
-        { "key": "C", "label": "A skate park", "votes": 29 }
+        {
+          "key": "A",
+          "label": "A pier for the lighthouse",
+          "votes": 88
+        },
+        {
+          "key": "B",
+          "label": "A night market",
+          "votes": 97
+        },
+        {
+          "key": "C",
+          "label": "A skate park",
+          "votes": 29
+        }
       ],
       "result": null
     }
   ],
-  "sponsors": [{ "name": "Kinsburg", "message": "Your shop could be here. Message us", "url": null }],
+  "sponsors": [
+    {
+      "name": "Kinsburg",
+      "message": "Your shop could be here. Message us",
+      "url": null
+    }
+  ],
   "perkLinks": {},
-  "levelAt": [3, 10, 30],
-  "account": "kinsburgtown"
+  "levelAt": [
+    3,
+    10,
+    30
+  ],
+  "account": "kinsburgtown",
+  "sim": {
+    "stats": {
+      "health": 71,
+      "safety": 58,
+      "education": 64,
+      "happiness": 67
+    },
+    "treasury": 2310,
+    "open": [
+      {
+        "id": 41,
+        "kind": "fire",
+        "label": "Kitchen fire",
+        "target": "rusty.moss",
+        "needed": 3,
+        "status": "open",
+        "createdAt": "2026-11-18T19:46:20Z",
+        "deadline": "2026-11-18T23:46:20Z",
+        "closedAt": null,
+        "responders": [
+          "cora_dumpling_29"
+        ]
+      },
+      {
+        "id": 42,
+        "kind": "burglary",
+        "label": "Break-in",
+        "target": "the.cedar.thyme",
+        "needed": 2,
+        "status": "open",
+        "createdAt": "2026-11-18T18:58:20Z",
+        "deadline": "2026-11-19T00:58:20Z",
+        "closedAt": null,
+        "responders": []
+      },
+      {
+        "id": 43,
+        "kind": "flu",
+        "label": "Flu week",
+        "target": null,
+        "needed": 4,
+        "status": "open",
+        "createdAt": "2026-11-18T15:10:20Z",
+        "deadline": "2026-11-19T03:10:20Z",
+        "closedAt": null,
+        "responders": [
+          "basil.and.pancake",
+          "kai.aspen"
+        ]
+      },
+      {
+        "id": 44,
+        "kind": "repair",
+        "label": "Storm damage",
+        "target": "kind.teacup",
+        "needed": 1,
+        "status": "open",
+        "createdAt": "2026-11-18T11:10:20Z",
+        "deadline": "2026-11-20T11:10:20Z",
+        "closedAt": null,
+        "responders": []
+      },
+      {
+        "id": 45,
+        "kind": "lostpet",
+        "label": "Lost pet",
+        "target": "kai.aspen",
+        "needed": 1,
+        "status": "open",
+        "createdAt": "2026-11-18T19:58:20Z",
+        "deadline": "2026-11-19T03:58:20Z",
+        "closedAt": null,
+        "responders": []
+      }
+    ],
+    "recent": [
+      {
+        "id": 39,
+        "kind": "crash",
+        "label": "Fender-bender",
+        "target": "nora_rides",
+        "needed": 3,
+        "status": "resolved",
+        "createdAt": "2026-11-18T00:10:20Z",
+        "deadline": "2026-11-18T03:10:20Z",
+        "closedAt": "2026-11-18T01:10:20Z",
+        "responders": [
+          "the.early.gecko",
+          "nimble.waffle",
+          "quinn9937"
+        ]
+      },
+      {
+        "id": 38,
+        "kind": "fire",
+        "label": "Kitchen fire",
+        "target": "braveowl",
+        "needed": 3,
+        "status": "resolved",
+        "createdAt": "2026-11-17T14:10:20Z",
+        "deadline": "2026-11-17T18:10:20Z",
+        "closedAt": "2026-11-17T15:10:20Z",
+        "responders": [
+          "cora_dumpling_29",
+          "violet_robin36",
+          "wes1975"
+        ]
+      },
+      {
+        "id": 37,
+        "kind": "burglary",
+        "label": "Break-in",
+        "target": "ana.o",
+        "needed": 2,
+        "status": "failed",
+        "createdAt": "2026-11-17T04:10:20Z",
+        "deadline": "2026-11-17T10:10:20Z",
+        "closedAt": "2026-11-17T10:10:20Z",
+        "responders": [
+          "dani.w"
+        ]
+      }
+    ],
+    "ofTheWeek": [
+      {
+        "title": "KPD officer of the week",
+        "handle": "the.early.gecko",
+        "count": 4
+      },
+      {
+        "title": "KFD firefighter of the week",
+        "handle": "cora_dumpling_29",
+        "count": 3
+      },
+      {
+        "title": "Medic of the week",
+        "handle": "nimble.waffle",
+        "count": 3
+      },
+      {
+        "title": "Builder of the week",
+        "handle": "anya_dances",
+        "count": 1
+      }
+    ]
+  },
+  "generatedAt": "2026-11-18T19:58:20Z"
 }

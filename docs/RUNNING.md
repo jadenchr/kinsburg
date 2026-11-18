@@ -124,6 +124,39 @@ curl -s -X POST https://kinsburg.com/admin/pet -H "Authorization: Bearer YOUR_AD
 curl -s -X POST https://kinsburg.com/admin/job -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"handle":"someone","job":"Police officer"}'
 ```
 
+## The city simulation
+
+Every 15 minutes, after checking comments, the city takes a step:
+
+- **Stats** (health, safety, education, happiness, 0 to 100) drift toward what the town's staffing supports. More doctors and nurses means better health, more police and firefighters better safety, more teachers and librarians better education. People who actually respond or work shifts count double. Happiness follows the others, plus pets, minus unrepaired damage.
+- **Incidents** start at residents' houses, a couple a day in a small town and more as it grows: kitchen fires, break-ins, fender-benders, flu weeks, lost pets, exam weeks. Low stats invite more of the matching trouble.
+- **Residents respond** by commenting `RESPOND` (or "on my way", "on duty") on any post. Only the right jobs count: firefighters for fires, police for break-ins, and so on. When enough have responded, it's resolved: each responder earns 10 town coins, the stat goes up, and they count toward "of the week" titles.
+- **If nobody comes in time**, it fails and the stat drops. A failed fire leaves damage (scaffolding on the house) until a carpenter responds; that pays 15 coins.
+- **RESPOND with nothing to answer** is a paid shift: 2 coins, once a day.
+- **Town coins** are pretend money: never sold, never cashed out. 150 coins buys a rare pet (`PET FOX`, `PET OWL`, `PET GOLDEN`).
+
+See it all in the Town hall panel ("City status") and on the map. The rules (chances, rewards, deadlines) are in `shared/sim.mjs`.
+
+**Admin tools:**
+
+```bash
+curl -s https://kinsburg.com/admin/sim -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+Start a specific incident (for a Reel, or to wake the town up). `target` and `hours` are optional:
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/sim/start -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"kind":"fire","target":"someone","hours":4}'
+```
+
+Give coins (a giveaway prize), or take them back with a negative number:
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/coins -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"handle":"someone","add":50}'
+```
+
+To pause incidents starting on their own, set `SIM_RANDOM_INCIDENTS` to `"false"` in `wrangler.jsonc` and deploy.
+
 ## How houses grow
 
 Every comment a resident leaves on our posts counts. At 3 comments the house gets a second storey, at 10 a third, and at 30 a fourth. Only the number of comments is stored, never what they say.

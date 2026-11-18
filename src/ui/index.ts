@@ -7,11 +7,12 @@ import { FONTS, skyAt, type SkyState } from '../theme';
 import { ICONS } from './icons';
 import { addressOf } from './lookup';
 import { renderShareCard, shareOrDownload } from './share';
-import { buyUrl, createTownPanel } from './town';
+import { buyUrl, createTownPanel, jobsText, progressText, whereText } from './town';
 import type { TownInfo } from '../data/town';
 import type { BuildingRef } from '../city/api';
 import { PET_NAMES } from '../../shared/residents-format.mjs';
 import { SERVICE_STAFF } from '../../shared/city-layout.mjs';
+import { INCIDENTS } from '../../shared/sim.mjs';
 
 /** How each building is described, and the comment that gets you a job there. */
 const BUILDING_COPY: Record<Exclude<BuildingRef['kind'], 'townhall'>, { what: string; command: string }> = {
@@ -303,6 +304,19 @@ export const createUI: CreateUI = (root) => {
       li.append(document.createTextNode(pets ? `${pets.toLocaleString()} ${pets === 1 ? 'pet lives' : 'pets live'} in Kinsburg` : 'No pets in town yet'));
       facts.append(li);
     }
+    // open calls this building's staff can answer
+    const calls = (townInfo?.sim?.open ?? []).filter((inc) => (INCIDENTS[inc.kind].jobs as readonly string[]).some((j) => jobs.includes(j)));
+    if (calls.length) {
+      const li = el('li', { class: 'kb-fact kb-fact-alert' }, ICONS.pin);
+      li.append(el('span', { class: 'kb-vh' }, 'Open calls: '));
+      li.append(
+        document.createTextNode(
+          `${calls.length} ${calls.length === 1 ? 'call' : 'calls'}: ` +
+            calls.map((inc) => `${inc.label} ${whereText(inc, data)}, ${progressText(inc)}`).join('; '),
+        ),
+      );
+      facts.append(li);
+    }
     staff.replaceChildren();
     for (const r of people.slice(0, STAFF_SHOWN)) {
       const btn = el('button', { type: 'button' });
@@ -318,7 +332,7 @@ export const createUI: CreateUI = (root) => {
     const ig = el('a', { href: `https://instagram.com/${account}`, target: '_blank', rel: 'noopener' });
     ig.textContent = `@${account}`;
     buildingNote.append(`Work here: comment ${copy.command} on any post by `, ig, '. You can change jobs once a week.');
-    if (b.kind === 'vet') buildingNote.append(' Get a pet: comment PET DOG, PET CAT or PET BUNNY. Rare pets (fox, owl, golden retriever) come with the shop.');
+    if (b.kind === 'vet') buildingNote.append(' Get a pet: comment PET DOG, PET CAT or PET BUNNY. Rare pets (fox, owl, golden retriever) cost 150 town coins: PET FOX, PET OWL or PET GOLDEN.');
     cardMode(false);
     staff.hidden = people.length === 0;
   }
@@ -342,6 +356,13 @@ export const createUI: CreateUI = (root) => {
     const storeys = 1 + (resident.level ?? 0);
     if (storeys > 1) fact(ICONS.roof, '', `${storeys}-storey house`);
     if (resident.pet) fact(ICONS.paw, 'Pet: ', PET_NAMES[resident.pet]);
+    if ((resident.coins ?? 0) > 0) fact(ICONS.coin, 'Town coins: ', `${resident.coins!.toLocaleString()} town coins`);
+    for (const inc of (townInfo?.sim?.open ?? []).filter((i) => i.target === resident.handle)) {
+      const li = el('li', { class: 'kb-fact kb-fact-alert' }, ICONS.pin);
+      li.append(el('span', { class: 'kb-vh' }, 'Happening here: '));
+      li.append(document.createTextNode(`${inc.label} here, ${Math.min(inc.responders.length, inc.needed)} of ${inc.needed} ${jobsText(inc.kind)} so far`));
+      facts.append(li);
+    }
 
     perks.replaceChildren();
     const has = (p: string) => resident.perks.includes(p as Resident['perks'][number]);

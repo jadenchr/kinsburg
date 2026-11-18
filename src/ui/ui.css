@@ -406,7 +406,7 @@ dialog.kb-town {
   overflow: hidden;
 }
 dialog.kb-town[open] { display: flex; flex-direction: column; gap: 8px; animation: kb-rise 200ms ease-out; }
-.kb-town-body { overflow: auto; padding-bottom: 20px; overscroll-behavior: contain; }
+.kb-town-body { overflow: auto; padding-bottom: 20px; padding-right: 8px; overscroll-behavior: contain; } /* room for overlay scrollbars */
 .kb-town-section { padding: 12px 0; border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); scroll-margin-top: 8px; }
 .kb-town-section:first-child { border-top: 0; padding-top: 4px; }
 .kb-town-section h3 { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
@@ -431,6 +431,15 @@ dialog.kb-town[open] { display: flex; flex-direction: column; gap: 8px; animatio
 .kb-poll-bar::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--w); border-radius: inherit; background: var(--kb-primary); }
 .kb-poll-won .kb-poll-label { font-weight: 700; }
 
+.kb-town-sub { margin: 12px 0 4px; font-size: 14px; font-weight: 700; }
+.kb-stats-list { margin-bottom: 8px; }
+.kb-stat-low .kb-poll-bar::after { background: repeating-linear-gradient(135deg, var(--kb-primary) 0 6px, color-mix(in srgb, var(--kb-primary) 55%, var(--kb-surface-strong)) 6px 10px); }
+.kb-stat-low .kb-poll-count { font-weight: 700; color: var(--ink); }
+.kb-treasury { margin: 0 0 8px; }
+.kb-incidents { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; font-size: 15px; line-height: 1.4; }
+.kb-incident { display: grid; gap: 2px; padding-left: 8px; border-left: 3px solid color-mix(in srgb, var(--kb-primary) 60%, transparent); overflow-wrap: anywhere; }
+.kb-incidents li { overflow-wrap: anywhere; }
+.kb-fact-alert { padding: 4px 8px; border-radius: 8px; background: color-mix(in srgb, var(--kb-primary) 16%, transparent); font-weight: 600; }
 .kb-founders { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 14px; font-weight: 600; }
 .kb-shop { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .kb-shop-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }

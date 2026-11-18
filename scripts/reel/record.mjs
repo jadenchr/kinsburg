@@ -22,6 +22,7 @@
 //   --no-music            always use the generated ambient bed
 //   --font <ttf|otf>      overlay font file (env REEL_FONT). Default: Figtree from Google Fonts,
 //                         falling back to a system sans-serif
+//   --no-heroes           leave the hero shout-outs out of the caption (also skips the house fly-to)
 //   --no-names            leave new residents' names out of the caption
 //   --out out             output folder
 //   --date YYYY-MM-DD     date used in file names (default: today, UTC)
@@ -38,7 +39,7 @@ import { dirname, join, resolve, extname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { parseArgs, run, sleep, probe, rgba, strHash, ambientArgs } from './lib.mjs';
-import { SERIES, buildCaption, seriesForDate } from './series.mjs';
+import { SERIES, buildCaption, seriesForDate, recentHeroes } from './series.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = parseArgs();
@@ -195,6 +196,22 @@ html,body{margin:0;width:${W}px;height:${H}px;background:transparent;overflow:hi
   }
 }
 
+/** Town data for the hero shout-outs. Never throws: returns its `sim` block or null. */
+async function loadSim(base) {
+  const urls = BASE ? [`${base}/api/city/town.json`, `${base}/town.json`] : [`${base}/town.json`];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) continue;
+      const sim = (await r.json())?.sim;
+      if (sim && typeof sim === 'object') return sim;
+    } catch {
+      /* missing or old-format town data: no shout-outs */
+    }
+  }
+  return null;
+}
+
 async function main() {
   const t0 = Date.now();
   mkdirSync(OUT, { recursive: true });
@@ -203,9 +220,14 @@ async function main() {
   cleanup.push(async () => rmSync(tmp, { recursive: true, force: true }));
 
   const base = await ensureServer();
+  const sim = args.heroes === false ? null : await loadSim(base);
+  const heroes = recentHeroes(sim);
+  log(sim ? `town data: ${heroes.length} resolved incident(s) in the last 26 h, ${sim.open?.length ?? 0} open` : 'town data: none (no hero shout-outs)');
+  // the plain "Day N" series flies to the latest rescued house when no --focus is given
+  const heroFocus = !FOCUS && SERIES_ID === 'day' ? heroes.find((i) => i.target)?.target ?? '' : '';
   const q = new URLSearchParams({ reel: '1', duration: String(DUR), fps: String(FPS), w: String(W), h: String(H) });
   if (HOUR) q.set('hour', HOUR);
-  if (FOCUS) q.set('focus', FOCUS);
+  if (FOCUS || heroFocus) q.set('focus', FOCUS || heroFocus);
   if (DAY) q.set('day', DAY);
   const pageUrl = `${base}/?${q}`;
 
@@ -252,7 +274,7 @@ async function main() {
   const series = SERIES[SERIES_ID];
   const title = typeof args.title === 'string' ? fill(args.title) : series.title(cs);
   const subtitle = typeof args.subtitle === 'string' ? fill(args.subtitle) : args.subtitle === false ? '' : series.subtitle(cs);
-  const caption = buildCaption(SERIES_ID, cs);
+  const caption = buildCaption(SERIES_ID, cs, sim);
   const overlayPng = join(tmp, 'overlay.png');
   const font = await renderOverlay(browser, title, subtitle, colors, overlayPng);
   log(`overlay "${title}" / "${subtitle}" (font: ${font})`);

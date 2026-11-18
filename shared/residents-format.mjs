@@ -7,7 +7,7 @@
 //       shards: [{ n, count, rev }] }
 //   shard     GET /api/city/shard/<n>.json?v=<rev>         -> Row[]   (residents n*shardSize+1 ..)
 //   pack      GET /api/city/pack/<a>-<b>.json?v=<maxRev>   -> Row[][] (shards a..b, b-a < packSize)
-//   Row = [handle, number, joinedDay, jobIndex, houseStyle, perkMask, level?, follower?, pet?]
+//   Row = [handle, number, joinedDay, jobIndex, houseStyle, perkMask, level?, follower?, pet?, coins?]
 //   (the optional tail is cut after its last non-zero value, so older rows stay valid)
 //
 // A resident's plot depends only on (seed, number), so the browser rebuilds the full CityData
@@ -190,10 +190,10 @@ export function encodeResident(r) {
   const job = typeof r.job === 'number' ? r.job : JOBS.indexOf(r.job);
   if (job < 0) throw new Error(`unknown job ${r.job}`);
   const pet = typeof r.pet === 'number' ? r.pet : Math.max(0, PETS.indexOf(r.pet ?? 'none'));
-  return withTail([r.handle, r.number, r.joinedDay, job, r.houseStyle, typeof r.perks === 'number' ? r.perks : perksToMask(r.perks)], [r.level | 0, r.follower ? 1 : 0, pet]);
+  return withTail([r.handle, r.number, r.joinedDay, job, r.houseStyle, typeof r.perks === 'number' ? r.perks : perksToMask(r.perks)], [r.level | 0, r.follower ? 1 : 0, pet, r.coins | 0]);
 }
 
-/** Append the optional tail [level, follower, pet], cut after its last non-zero value. */
+/** Append the optional tail [level, follower, pet, coins], cut after its last non-zero value. */
 export function withTail(row, tail) {
   let n = tail.length;
   while (n > 0 && !tail[n - 1]) n--;
@@ -203,9 +203,10 @@ export function withTail(row, tail) {
 
 /** Row -> Resident without plotId. */
 export function decodeRow(row) {
-  const [handle, number, joinedDay, job, houseStyle, mask, level = 0, follower = 0, pet = 0] = row;
+  const [handle, number, joinedDay, job, houseStyle, mask, level = 0, follower = 0, pet = 0, coins = 0] = row;
   const r = { id: String(handle).toLowerCase(), handle, number, joinedDay, job: JOBS[job] ?? JOBS[0], houseStyle, perks: maskToPerks(mask), level: Math.max(0, Math.min(3, level | 0)), follower: follower === 1 };
   if (pet > 0 && pet < PETS.length) r.pet = PETS[pet];
+  if (coins > 0) r.coins = coins | 0;
   return r;
 }
 

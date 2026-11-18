@@ -18,6 +18,7 @@ import { putMedia } from './media';
 import { townAdmin } from './town';
 import { castAdmin } from './cast';
 import { lifeAdmin } from './life';
+import { simAdmin } from './sim';
 
 export async function handleAdmin(req: Request, env: Env, path: string): Promise<Response> {
   if (!env.ADMIN_TOKEN) return json({ error: 'admin disabled (set ADMIN_TOKEN)' }, 503);
@@ -25,6 +26,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
   if (!safeEqual(auth, `Bearer ${env.ADMIN_TOKEN}`)) return json({ error: 'unauthorized' }, 401);
 
   if (req.method === 'GET' && path === '/admin/stats') return stats(env);
+  if (req.method === 'GET' && path === '/admin/sim') return (await simAdmin(env, req, path, null))!;
   if (req.method === 'GET' && path === '/admin/cast') return castAdmin(env, req, null);
   if (req.method === 'PUT' && path.startsWith('/admin/media/')) return putMedia(req, env, path);
   if (req.method !== 'POST') return json({ error: 'not found' }, 404);
@@ -39,6 +41,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
 
   const life = await lifeAdmin(env, path, body);
   if (life) return life;
+  const sim = await simAdmin(env, req, path, body);
+  if (sim) return sim;
   const town = await townAdmin(env, path, body);
   if (town) return town;
 
@@ -58,7 +62,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       if (body.evict) {
         // Removing a resident would shift every later plot, so the slot stays and gets a neutral name.
         const row = await env.DB.prepare(
-          `UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, pet = 0, pets_owned = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`,
+          `UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, pet = 0, pets_owned = 0, coins = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`,
         ).bind(handle).first<any>();
         if (row) {
           await writeSnapshots(env, [toRow(row)], stmts);

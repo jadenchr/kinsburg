@@ -1,8 +1,10 @@
 // Town hall panel: how to move in, the mayor, the current vote, how houses grow, the founders,
 // supporting the city (perks) and the policy pages. Opened from the "Town hall" button.
 import type { CityData, Resident } from '../types';
-import type { PerkKey, TownInfo, TownPoll } from '../data/town';
+import type { PerkKey, TownIncident, TownInfo, TownPoll } from '../data/town';
 import { ICONS } from './icons';
+import { addressOf } from './lookup';
+import { COINS, INCIDENTS, PET_COIN_PRICE } from '../../shared/sim.mjs';
 
 /** What each perk is, in the words shown to people. Cosmetic only, never power. */
 export const PERK_INFO: { key: PerkKey; name: string; what: string }[] = [
@@ -36,7 +38,7 @@ const html = (s: string) => {
   return t.content;
 };
 
-export type TownSection = 'move-in' | 'vote' | 'support';
+export type TownSection = 'move-in' | 'status' | 'vote' | 'support';
 
 export interface TownPanel {
   readonly dialog: HTMLDialogElement;
@@ -45,6 +47,58 @@ export interface TownPanel {
   close(): void;
   onClosed(cb: () => void): void;
 }
+
+const STAT_ROWS = [
+  { key: 'health', label: 'Health' },
+  { key: 'safety', label: 'Safety' },
+  { key: 'education', label: 'Education' },
+  { key: 'happiness', label: 'Happiness' },
+] as const;
+
+/** A word for a stat so the level never rests on colour alone. */
+export function statWord(n: number): string {
+  return n >= 75 ? 'Good' : n >= 50 ? 'Fair' : n >= 30 ? 'Low' : 'Needs help';
+}
+
+const lower = (s: string) => s.toLowerCase();
+const pluralJob = (job: string, n: number) => (n === 1 ? lower(job) : job === 'Police officer' ? 'police officers' : lower(job) + 's');
+
+/** "firefighters", "doctors or nurses" */
+export function jobsText(kind: TownIncident['kind'], n = 2): string {
+  const jobs = INCIDENTS[kind].jobs.map((j) => pluralJob(j, n));
+  return jobs.length > 1 ? `${jobs.slice(0, -1).join(', ')} or ${jobs[jobs.length - 1]}` : jobs[0]!;
+}
+
+/** "2 of 3 firefighters" / "1 of 3 doctors or nurses" */
+export function progressText(inc: TownIncident): string {
+  const have = Math.min(inc.responders.length, inc.needed);
+  return `${have} of ${inc.needed} ${jobsText(inc.kind, inc.needed)}`;
+}
+
+/** "at 12 Larkspur Lane", or the town-wide place. */
+export function whereText(inc: TownIncident, data: CityData): string {
+  const r = inc.target ? data.residents.find((x) => x.handle === inc.target) : undefined;
+  const addr = r ? addressOf(r, data) : '';
+  if (addr) return `at ${addr}`;
+  if (inc.kind === 'flu') return 'at Kinsburg General Hospital';
+  if (inc.kind === 'exam') return 'at Kinsburg Elementary';
+  return inc.target ? `at @${inc.target}'s house` : 'around town';
+}
+
+/** "2 h left", "40 min left", "time is nearly up" */
+export function timeLeft(inc: TownIncident, now = Date.now()): string {
+  const ms = Date.parse(inc.deadline) - now;
+  if (!(ms > 60_000)) return 'nearly out of time';
+  const min = Math.round(ms / 60_000);
+  if (min < 90) return `${min} min left`;
+  const h = Math.round(ms / 3_600_000);
+  return h < 48 ? `${h} h left` : `${Math.round(h / 24)} days left`;
+}
+
+const handles = (hs: string[]) => {
+  const t = hs.map((h) => `@${h}`);
+  return t.length > 1 ? `${t.slice(0, -1).join(', ')} and ${t[t.length - 1]}` : (t[0] ?? '');
+};
 
 function pollBlock(p: TownPoll, account: string): HTMLElement {
   const box = el('div', { class: 'kb-poll' });
@@ -99,6 +153,67 @@ export function createTownPanel(): TownPanel {
     return s;
   }
 
+  function statusSection(t: TownInfo, d: CityData): HTMLElement {
+    const sim = t.sim!;
+    const kids: Node[] = [];
+
+    const bars = el('ul', { class: 'kb-poll-options kb-stats-list' });
+    for (const row of STAT_ROWS) {
+      const v = Math.round(sim.stats[row.key]);
+      const low = v < 50;
+      const li = el('li', { class: 'kb-poll-option kb-stat' + (low ? ' kb-stat-low' : '') });
+      li.append(
+        el('span', { class: 'kb-poll-label' }, row.label),
+        el('span', { class: 'kb-poll-count' }, `${v} · ${statWord(v)}`),
+      );
+      const bar = el('span', { class: 'kb-poll-bar', 'aria-hidden': 'true' });
+      bar.style.setProperty('--w', `${v}%`);
+      li.append(bar, el('span', { class: 'kb-vh' }, `${row.label}: ${v} out of 100, ${statWord(v)}`));
+      bars.append(li);
+    }
+    kids.push(bars, el('p', { class: 'kb-treasury' }, el('b', {}, 'Treasury: '), `${sim.treasury.toLocaleString()} town coins`));
+
+    kids.push(el('h4', { class: 'kb-town-sub' }, 'Happening now'));
+    if (!sim.open.length) kids.push(el('p', {}, 'All quiet in Kinsburg.'));
+    else {
+      const list = el('ul', { class: 'kb-incidents' });
+      for (const inc of sim.open) {
+        const li = el('li', { class: 'kb-incident' });
+        li.append(
+          el('b', {}, inc.label),
+          ' ',
+          whereText(inc, d),
+          el('span', { class: 'kb-town-note' }, `${progressText(inc)} so far · ${timeLeft(inc)}`),
+        );
+        if (inc.responders.length) li.append(el('span', { class: 'kb-town-note' }, `Responding: ${handles(inc.responders)}`));
+        const jobs = jobsText(inc.kind);
+        li.append(el('span', { class: 'kb-town-note' }, `${jobs[0]!.toUpperCase()}${jobs.slice(1)}: comment `, el('b', {}, 'RESPOND'), ' on any post.'));
+        list.append(li);
+      }
+      kids.push(list);
+    }
+
+    const titles = sim.ofTheWeek.filter((x) => x.title && x.handle);
+    const recent = sim.recent.filter((x) => x.status !== 'open').slice(0, 5);
+    kids.push(el('h4', { class: 'kb-town-sub' }, 'Heroes'));
+    if (!titles.length && !recent.length) kids.push(el('p', {}, 'Nobody yet. The first responders will be listed here.'));
+    if (titles.length) {
+      const l = el('ul', { class: 'kb-incidents' });
+      for (const x of titles) l.append(el('li', {}, el('b', {}, x.title), `: @${x.handle}`, el('span', { class: 'kb-town-note' }, `${x.count} ${x.count === 1 ? 'call' : 'calls'} answered this week`)));
+      kids.push(l);
+    }
+    if (recent.length) {
+      const l = el('ul', { class: 'kb-incidents' });
+      for (const inc of recent) {
+        const place = whereText(inc, d).replace(/^at /, 'on ');
+        const what = `${inc.label} ${place}`;
+        l.append(el('li', {}, inc.status === 'resolved' && inc.responders.length ? `${what}: handled by ${handles(inc.responders)}` : inc.status === 'resolved' ? `${what}: handled` : `${what}: went unanswered`));
+      }
+      kids.push(l);
+    }
+    return section('status', 'City status', ...kids);
+  }
+
   function render() {
     if (!town || !data) return;
     const t = town;
@@ -117,6 +232,10 @@ export function createTownPanel(): TownPanel {
       section('move-in', 'How to move in', steps, el('p', { class: 'kb-town-note' }, 'Houses are free. Following us is not required, but it is how you will see your house grow.')),
     );
 
+
+    // city status
+    if (t.sim) body.append(statusSection(t, data!));
+
     // jobs and pets
     const cmd = (c: string) => el('b', {}, c);
     body.append(
@@ -124,7 +243,8 @@ export function createTownPanel(): TownPanel {
         'life',
         'Jobs and pets',
         el('p', {}, 'Pick your job by commenting ', cmd('JOB'), ' and the job on any post, for example ', cmd('JOB DOCTOR'), ', ', cmd('JOB POLICE'), ', ', cmd('JOB FIREFIGHTER'), ', ', cmd('JOB TEACHER'), ' or ', cmd('JOB VET'), '. You can change it once a week. Tap the hospital, school, KPD or KFD to see who works there.'),
-        el('p', {}, 'Get a pet for your yard: comment ', cmd('PET DOG'), ', ', cmd('PET CAT'), ' or ', cmd('PET BUNNY'), '. Free. Rare pets (fox, owl, golden retriever) come with the shop.'),
+        el('p', {}, 'When something happens in town, residents with the right job comment ', cmd('RESPOND'), ' on any post by @', t.account, '. Each responder earns ', `${COINS.respond} town coins`, ' (carpenters ', `${COINS.repair}`, ' for repairs). With nothing to answer, ', cmd('RESPOND'), ` is a paid shift: ${COINS.duty} coins, once a day.`),
+        el('p', {}, 'Get a pet for your yard: comment ', cmd('PET DOG'), ', ', cmd('PET CAT'), ' or ', cmd('PET BUNNY'), '. Free. Rare pets (fox, owl, golden retriever) cost ' + PET_COIN_PRICE + ' town coins: ', cmd('PET FOX'), ', ', cmd('PET OWL'), ' or ', cmd('PET GOLDEN'), '. Town coins are pretend money. They are never sold and never paid out.'),
         el('p', { class: 'kb-town-note' }, 'New here? One comment does it all: MOVE IN JOB DOCTOR PET DOG.'),
       ),
     );

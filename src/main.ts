@@ -79,15 +79,22 @@ async function start() {
   if (params.has('reel')) {
     const town = params.has('poster') ? null : await loadTown(data.demo);
     if (town) city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
+    if (town) city.setIncidents(town.sim?.open ?? []);
     return void import('./reel').then((m) => m.startReel(city, data, params));
   }
   ui.setStats({ day: cityDay(data), residents: data.residents.length, demo: data.demo });
   // town hall: mayor, votes, sponsors (billboards) and perk links. Loads after the map is up.
-  loadTown(data.demo).then((town) => {
+  const applyTown = (town: Awaited<ReturnType<typeof loadTown>>) => {
     city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
+    city.setIncidents(town.sim?.open ?? []);
     ui.setTown(town, data);
+  };
+  loadTown(data.demo).then((town) => {
+    applyTown(town);
     if (params.get('town') !== null) ui.openTown((params.get('town') || undefined) as 'move-in' | 'vote' | 'support' | undefined);
   });
+  // the simulation moves on every 15 minutes; refresh what's happening every 2
+  setInterval(() => void loadTown(data.demo).then(applyTown), 120_000);
   tick();
   ui.ready();
 

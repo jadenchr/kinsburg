@@ -52,6 +52,10 @@ How they're made:
 
 Run it again with `-- --url https://kinsburg.com` once real people live there, so the houses, names and numbers are real. There's a quiet music bed under the voice; you can add your own sound in the Instagram app.
 
+## Hero shout-outs
+
+The recorder also reads the city's town data (`<site>/api/city/town.json` for a live site, `/town.json` for a local build). Incidents that residents resolved in the last 26 hours get one or two short lines in the caption, naming the responders as plain names (no @-tags), for example "Last night the.early.gecko and nimble.waffle put out a kitchen fire 🚒." Then comes "Firefighters, police, doctors: comment RESPOND when the city needs you." and, if an open incident still needs people, one "Right now: …" line. The MOVE IN line stays last. On the plain "Day N" post the camera also flies to the latest rescued house. If the town data is missing or old-format, nothing is added and the recording carries on. Use `--no-heroes` to leave it all out. The wording lives in `scripts/reel/series.mjs` (`heroLines`, `openCall`).
+
 ## Run it from GitHub by hand
 
 Actions tab → **Daily reel** → **Run workflow**. "Record only" is ticked by default. Every run keeps the MP4 as a downloadable artifact for 14 days, so you can watch it before turning posting on.

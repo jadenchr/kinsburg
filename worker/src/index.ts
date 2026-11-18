@@ -13,6 +13,7 @@ import { handleAdmin } from './admin';
 import { getManifest, getShardBodies } from './city';
 import { type Env, json, log, packSize } from './env';
 import { handleInstagramWebhook, pollComments, refreshToken } from './instagram';
+import { simTick } from './sim';
 import { handleStripeWebhook } from './stripe';
 import { serveMedia } from './media';
 import { getTown } from './town';
@@ -105,6 +106,14 @@ export default {
       else await pollComments(env);
     } catch (err) {
       log('cron_failed', { cron: controller.cron, error: String(err) });
+    }
+    // the city simulation steps on the 15-minute cron, even when Instagram is unreachable
+    if (controller.cron !== '41 3 * * 1') {
+      try {
+        await simTick(env);
+      } catch (err) {
+        log('sim_failed', { error: String(err) });
+      }
     }
   },
 } satisfies ExportedHandler<Env>;

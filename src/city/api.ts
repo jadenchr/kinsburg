@@ -1,6 +1,7 @@
 // Contract for the city renderer. Implemented in src/city/index.ts.
 import type { CityData, Resident } from '../types';
 import type { SkyState } from '../theme';
+import type { TownIncident } from '../data/town';
 
 export interface CityView {
   /** Load (or reload) the whole city. Centres the camera on the town hall. */
@@ -11,6 +12,11 @@ export interface CityView {
   focusResident(id: string): void;
   /** Remove the highlight (e.g. when the card closes). */
   clearHighlight(): void;
+  /**
+   * Open incidents from the simulation: drawn at their house (fire, police car, scaffolding…),
+   * with the station's vehicle driving there along the roads. Replaces the previous list.
+   */
+  setIncidents(incidents: TownIncident[]): void;
   /** Sponsor billboards on the town square (rotates every 8 s when there are several). */
   setBillboards(lines: Billboard[]): void;
   /** Called when the user taps/clicks a house (resident) or empty ground (null). */
