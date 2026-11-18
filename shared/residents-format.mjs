@@ -7,8 +7,8 @@
 //       shards: [{ n, count, rev }] }
 //   shard     GET /api/city/shard/<n>.json?v=<rev>         -> Row[]   (residents n*shardSize+1 ..)
 //   pack      GET /api/city/pack/<a>-<b>.json?v=<maxRev>   -> Row[][] (shards a..b, b-a < packSize)
-//   Row = [handle, number, joinedDay, jobIndex, houseStyle, perkMask, level?, follower?]
-//   (level 0..3 and follower 0|1 are omitted when 0, so older rows stay valid)
+//   Row = [handle, number, joinedDay, jobIndex, houseStyle, perkMask, level?, follower?, pet?]
+//   (the optional tail is cut after its last non-zero value, so older rows stay valid)
 //
 // A resident's plot depends only on (seed, number), so the browser rebuilds the full CityData
 // from this list with the shared layout engine (cityDataFromCompact).
@@ -24,7 +24,16 @@ export const JOBS = [
   'Fisher', 'Farmer', 'Painter', 'Musician', 'Mail carrier', 'Mechanic', 'Chef',
   'Gardener', 'Firefighter', 'Tailor', 'Shopkeeper', 'Beekeeper', 'Photographer',
   'Lighthouse keeper', 'Bus driver', 'Doctor', 'Coder', 'Architect', 'Potter',
+  'Police officer', 'Vet', // append-only: a resident's stored job is an index into this list
 ];
+
+/** Pets: index 0 = none. Free ones anyone can pick; rare ones need buying first (pets_owned bit). */
+export const PETS = ['none', 'dog', 'cat', 'bunny', 'fox', 'owl', 'golden'];
+export const FREE_PETS = ['dog', 'cat', 'bunny'];
+export const RARE_PETS = ['fox', 'owl', 'golden'];
+export const PET_NAMES = { none: 'No pet', dog: 'Dog', cat: 'Cat', bunny: 'Bunny', fox: 'Fox', owl: 'Owl', golden: 'Golden retriever' };
+/** Bit for a rare pet in residents.pets_owned. */
+export const petBit = (pet) => 1 << PETS.indexOf(pet);
 
 /** Perk bit i = PERKS[i]: star 1, goldRoof 2, monument 4, street 8. */
 export const PERKS = ['star', 'goldRoof', 'monument', 'street'];
@@ -85,6 +94,74 @@ export function matchesCastMe(text) {
   return /(^| )cast ?me( |$)/.test(t);
 }
 
+// ---------------------------------------------------------------- JOB and PET commands
+
+const fold = (text) => String(text ?? '').normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+/** A command comment starts with MOVE IN, JOB, PET, ADOPT or NO PET; later words can add more commands. */
+const COMMANDISH = /^(move ?in|job|pet|adopt|no pet)( |$)/;
+
+/** Words people use for each job (lowercase). Job names themselves always count. */
+const JOB_ALIASES = {
+  'Police officer': ['police', 'cop', 'officer', 'kpd', 'police officer', 'policeman', 'policewoman', 'sheriff'],
+  Firefighter: ['firefighter', 'fireman', 'firewoman', 'fire fighter', 'kfd', 'fire'],
+  Doctor: ['doctor', 'doc', 'surgeon', 'dr'],
+  Nurse: ['nurse'],
+  Teacher: ['teacher', 'teach', 'professor'],
+  Vet: ['vet', 'veterinarian'],
+  'Mail carrier': ['mail carrier', 'mailman', 'postman', 'postie', 'mail'],
+  'Lighthouse keeper': ['lighthouse keeper', 'lighthouse'],
+  'Bus driver': ['bus driver', 'bus'],
+  Coder: ['coder', 'programmer', 'developer', 'dev', 'engineer'],
+  Chef: ['chef', 'cook'],
+  Musician: ['musician', 'singer', 'dj', 'rapper'],
+  Photographer: ['photographer', 'photo'],
+  Painter: ['painter', 'artist'],
+};
+const JOB_WORDS = new Map();
+for (let i = 0; i < JOBS.length; i++) {
+  const names = [JOBS[i].toLowerCase(), ...(JOB_ALIASES[JOBS[i]] ?? [])];
+  for (const n of names) if (!JOB_WORDS.has(n)) JOB_WORDS.set(n, i);
+}
+
+/**
+ * The job a comment asks for, or null. The comment must start with a command (MOVE IN, JOB, PET):
+ * "JOB DOCTOR", "job: police", "MOVE IN job firefighter pet dog". "great job doctor" does not count.
+ */
+export function parseJobCommand(text) {
+  const t = fold(text);
+  if (!COMMANDISH.test(t)) return null;
+  const m = /(?:^| )job (.+)$/.exec(t);
+  if (!m) return null;
+  const words = m[1].split(' ');
+  for (let n = Math.min(3, words.length); n >= 1; n--) {
+    const w = words.slice(0, n).join(' ');
+    if (JOB_WORDS.has(w)) return JOB_WORDS.get(w);
+  }
+  const single = words[0].replace(/s$/, ''); // "doctors"
+  return JOB_WORDS.has(single) ? JOB_WORDS.get(single) : null;
+}
+
+const PET_WORDS = {
+  dog: 'dog', puppy: 'dog', pup: 'dog', doggo: 'dog',
+  cat: 'cat', kitten: 'cat', kitty: 'cat',
+  bunny: 'bunny', rabbit: 'bunny',
+  fox: 'fox', owl: 'owl',
+  golden: 'golden', 'golden retriever': 'golden', retriever: 'golden',
+  none: 'none', no: 'none',
+};
+
+/** The pet a comment asks for ("PET DOG", "MOVE IN pet cat", "pet golden retriever"), or null. */
+export function parsePetCommand(text) {
+  const t = fold(text);
+  if (!COMMANDISH.test(t)) return null;
+  const m = /(?:^| )(?:pet|adopt) (.+)$/.exec(t) || /^(no) pet$/.exec(t);
+  if (!m) return null;
+  const words = m[1].split(' ');
+  if (words.length >= 2 && PET_WORDS[words.slice(0, 2).join(' ')]) return PET_WORDS[words.slice(0, 2).join(' ')];
+  const w = words[0].replace(/s$/, '');
+  return PET_WORDS[w] ?? PET_WORDS[words[0]] ?? null;
+}
+
 /** Job and house style picked deterministically from the (lowercase) handle. */
 export function traitsFor(handle) {
   const rng = mulberry32(hashString('kinsburg|traits|' + handle));
@@ -112,17 +189,24 @@ export function cityDayAt(foundedISO, ms = Date.now()) {
 export function encodeResident(r) {
   const job = typeof r.job === 'number' ? r.job : JOBS.indexOf(r.job);
   if (job < 0) throw new Error(`unknown job ${r.job}`);
-  const row = [r.handle, r.number, r.joinedDay, job, r.houseStyle, typeof r.perks === 'number' ? r.perks : perksToMask(r.perks)];
-  const level = r.level | 0, follower = r.follower ? 1 : 0;
-  if (level || follower) row.push(level);
-  if (follower) row.push(1);
+  const pet = typeof r.pet === 'number' ? r.pet : Math.max(0, PETS.indexOf(r.pet ?? 'none'));
+  return withTail([r.handle, r.number, r.joinedDay, job, r.houseStyle, typeof r.perks === 'number' ? r.perks : perksToMask(r.perks)], [r.level | 0, r.follower ? 1 : 0, pet]);
+}
+
+/** Append the optional tail [level, follower, pet], cut after its last non-zero value. */
+export function withTail(row, tail) {
+  let n = tail.length;
+  while (n > 0 && !tail[n - 1]) n--;
+  for (let i = 0; i < n; i++) row.push(tail[i] | 0);
   return row;
 }
 
 /** Row -> Resident without plotId. */
 export function decodeRow(row) {
-  const [handle, number, joinedDay, job, houseStyle, mask, level = 0, follower = 0] = row;
-  return { id: String(handle).toLowerCase(), handle, number, joinedDay, job: JOBS[job] ?? JOBS[0], houseStyle, perks: maskToPerks(mask), level: Math.max(0, Math.min(3, level | 0)), follower: follower === 1 };
+  const [handle, number, joinedDay, job, houseStyle, mask, level = 0, follower = 0, pet = 0] = row;
+  const r = { id: String(handle).toLowerCase(), handle, number, joinedDay, job: JOBS[job] ?? JOBS[0], houseStyle, perks: maskToPerks(mask), level: Math.max(0, Math.min(3, level | 0)), follower: follower === 1 };
+  if (pet > 0 && pet < PETS.length) r.pet = PETS[pet];
+  return r;
 }
 
 /** Shard index for a 1-based resident number. */

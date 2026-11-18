@@ -19,8 +19,12 @@ export const JOBS = [
   'Fisher', 'Farmer', 'Painter', 'Musician', 'Mail carrier', 'Mechanic', 'Chef',
   'Gardener', 'Firefighter', 'Tailor', 'Shopkeeper', 'Beekeeper', 'Photographer',
   'Lighthouse keeper', 'Bus driver', 'Doctor', 'Coder', 'Architect', 'Potter',
+  'Police officer', 'Vet', // append-only: a resident's stored job is an index into this list
 ] as const;
 export type Job = (typeof JOBS)[number];
+
+/** Pets shown in the yard. dog/cat/bunny are free; fox/owl/golden are bought first. */
+export type Pet = 'dog' | 'cat' | 'bunny' | 'fox' | 'owl' | 'golden';
 
 /** Paid status perks. Cosmetic only — never power. */
 export type Perk = 'star' | 'goldRoof' | 'monument' | 'street';
@@ -44,6 +48,8 @@ export interface Resident {
   level?: number;
   /** true once we know they follow @kinsburgtown (only knowable from DMs). Badge only, never required. */
   follower?: boolean;
+  /** Pet in the yard, if any (chosen by commenting PET DOG etc.). */
+  pet?: Pet;
 }
 
 export interface Street {
@@ -67,9 +73,15 @@ export interface Plot {
   houseNumber: number;
   /** Resident.id living here, if any. */
   residentId?: string;
+  /** Civic lots only: the city service housed here, and its name (e.g. "Kinsburg General Hospital"). */
+  service?: ServiceKind;
+  name?: string;
 }
 
-export type LandmarkKind = 'townhall' | 'fountain' | 'monument' | 'lighthouse' | 'windmill' | 'market';
+/** A city service on a civic lot. */
+export type ServiceKind = 'hospital' | 'school' | 'vet' | 'library';
+
+export type LandmarkKind = 'townhall' | 'fountain' | 'monument' | 'lighthouse' | 'windmill' | 'market' | 'police' | 'firestation';
 
 export interface Landmark {
   id: string;

@@ -1,5 +1,5 @@
 // Types for residents-format.mjs (compact resident list served by the Worker).
-import type { CityData, Job, Perk, Resident } from '../src/types';
+import type { CityData, Job, Perk, Pet, Resident } from '../src/types';
 
 export declare const FORMAT: 1;
 export declare const DEFAULT_SHARD_SIZE: number;
@@ -9,7 +9,15 @@ export declare const PERKS: readonly Perk[];
 export declare const PERK_BIT: Readonly<Record<Perk, number>>;
 
 /** [handle, number, joinedDay, jobIndex, houseStyle, perkMask] */
-export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number, level?: number, follower?: number];
+export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number, level?: number, follower?: number, pet?: number];
+export declare const PETS: readonly ('none' | Pet)[];
+export declare const FREE_PETS: readonly Pet[];
+export declare const RARE_PETS: readonly Pet[];
+export declare const PET_NAMES: Readonly<Record<'none' | Pet, string>>;
+export declare function petBit(pet: Pet): number;
+export declare function parseJobCommand(text: unknown): number | null;
+export declare function parsePetCommand(text: unknown): Pet | 'none' | null;
+export declare function withTail(row: Row, tail: number[]): Row;
 export declare const LEVEL_AT: readonly number[];
 export declare function levelFor(engagement: number): number;
 
@@ -59,6 +67,9 @@ export declare function encodeResident(r: {
   job: Job | number;
   houseStyle: number;
   perks: readonly Perk[] | number;
+  level?: number;
+  follower?: boolean;
+  pet?: Pet | number;
 }): Row;
 export declare function decodeRow(row: Row): CompactResident;
 export declare function shardOf(number: number, shardSize?: number): number;

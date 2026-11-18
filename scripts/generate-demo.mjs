@@ -96,7 +96,10 @@ export function demoResidents(count, seed = 'kinsburg') {
     // most houses are new, some have grown a floor or more from commenting
     const lh = [...handle].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % 100;
     const level = lh < 62 ? 0 : lh < 86 ? 1 : lh < 96 ? 2 : 3;
-    out.push({ id: handle, handle, number, joinedDay: 0, job, houseStyle, perks, ...(level ? { level } : {}) });
+    // pets the same way: about a quarter of homes have one, rare pets are rare
+    const ph = [...handle].reduce((h, ch) => (h * 37 + ch.charCodeAt(0)) >>> 0, 11) % 100;
+    const pet = ph < 11 ? 'dog' : ph < 18 ? 'cat' : ph < 22 ? 'bunny' : ph < 24 ? 'golden' : ph < 25 ? 'fox' : ph < 26 ? 'owl' : null;
+    out.push({ id: handle, handle, number, joinedDay: 0, job, houseStyle, perks, ...(level ? { level } : {}), ...(pet ? { pet } : {}) });
   }
   for (const r of out) r.joinedDay = dayFor(r.number, count);
   return out.slice(0, count);

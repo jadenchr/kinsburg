@@ -15,6 +15,8 @@ export interface CityView {
   setBillboards(lines: Billboard[]): void;
   /** Called when the user taps/clicks a house (resident) or empty ground (null). */
   onSelect(cb: (resident: Resident | null) => void): void;
+  /** Called instead of onSelect when the tap lands on a city building (hospital, KPD, town hall…). */
+  onBuilding(cb: (building: BuildingRef) => void): void;
   /**
    * Reel mode (used only by src/reel.ts, behind ?reel=1). Stops the live animation loop,
    * detaches input, fixes the canvas at exactly width×height device px (DPR 1) and returns
@@ -22,6 +24,12 @@ export interface CityView {
    */
   enterReel(width: number, height: number): ReelControl;
   destroy(): void;
+}
+
+/** A tapped city building. kind is a civic service or a landmark kind. */
+export interface BuildingRef {
+  kind: 'hospital' | 'school' | 'vet' | 'library' | 'police' | 'firestation' | 'townhall';
+  name: string;
 }
 
 export interface Billboard {

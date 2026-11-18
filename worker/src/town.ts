@@ -4,7 +4,7 @@
 // Following @kinsburgtown is encouraged, never required: a house never depends on it.
 import { LEVEL_AT, levelFor } from '../../shared/residents-format.mjs';
 import type { Row } from '../../shared/residents-format.mjs';
-import { checkHandle, eventStmt, joinMany, toRow, writeSnapshots } from './city';
+import { RESIDENT_COLS, checkHandle, eventStmt, joinMany, toRow, writeSnapshots } from './city';
 import { type Env, json, log } from './env';
 import type { IgClient, IgComment } from './instagram';
 
@@ -190,7 +190,7 @@ export async function processTownComments(env: Env, comments: IgComment[]) {
 
   if (levelChanged.length) {
     const rows: Row[] = [];
-    const q = await db.prepare(`SELECT handle, number, joined_day, job, house_style, perks, level, follower FROM residents WHERE handle IN (${levelChanged.map(() => '?').join(',')})`).bind(...levelChanged).all<any>();
+    const q = await db.prepare(`SELECT ${RESIDENT_COLS} FROM residents WHERE handle IN (${levelChanged.map(() => '?').join(',')})`).bind(...levelChanged).all<any>();
     for (const r of q.results) rows.push(toRow(r));
     await writeSnapshots(env, rows, levelChanged.map((h) => eventStmt(env, 'level_up', h, { level: residents.get(h) ? levelFor(residents.get(h)!.engagement + perHandle.get(h)!.length) : null })));
     report.levelUps = levelChanged;
@@ -240,7 +240,7 @@ export async function handleDms(env: Env, client: IgClient | undefined, messagin
     if (bad) {
       reply = `Sorry, we couldn't build a house for that username.`;
     } else if (wantsOut) {
-      const row = await env.DB.prepare(`UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, level = 0, follower = 0, engagement = 0 WHERE handle = ?1 RETURNING handle, number, joined_day, job, house_style, perks, level, follower`).bind(handle).first<any>();
+      const row = await env.DB.prepare(`UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, level = 0, follower = 0, engagement = 0, pet = 0, pets_owned = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`).bind(handle).first<any>();
       if (row) {
         await writeSnapshots(env, [toRow(row)], [eventStmt(env, 'move_out', handle, { source: 'dm' })]);
         report.movedOut++;
@@ -257,7 +257,7 @@ export async function handleDms(env: Env, client: IgClient | undefined, messagin
         if (j.status === 'joined') stmts.push(eventStmt(env, 'join', handle, { source: 'dm', number: j.number, follower: follows }));
         if (stmts.length) await env.DB.batch(stmts);
         if (j.status === 'joined' || follows !== null) {
-          const row = await env.DB.prepare('SELECT handle, number, joined_day, job, house_style, perks, level, follower FROM residents WHERE handle = ?1').bind(handle).first<any>();
+          const row = await env.DB.prepare(`SELECT ${RESIDENT_COLS} FROM residents WHERE handle = ?1`).bind(handle).first<any>();
           if (row) await writeSnapshots(env, [toRow(row)]);
         }
         if (j.status === 'joined') report.joined++;

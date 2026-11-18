@@ -93,7 +93,7 @@ export function createTownPanel(): TownPanel {
   let data: CityData | null = null;
   const closedCbs: (() => void)[] = [];
 
-  function section(id: TownSection | 'mayor' | 'grow' | 'founders', heading: string, ...kids: Node[]) {
+  function section(id: TownSection | 'mayor' | 'grow' | 'founders' | 'life', heading: string, ...kids: Node[]) {
     const s = el('section', { class: 'kb-town-section', id: `kb-town-${id}`, 'aria-labelledby': `kb-town-${id}-h` });
     s.append(el('h3', { id: `kb-town-${id}-h` }, heading), ...kids);
     return s;
@@ -115,6 +115,18 @@ export function createTownPanel(): TownPanel {
     );
     body.append(
       section('move-in', 'How to move in', steps, el('p', { class: 'kb-town-note' }, 'Houses are free. Following us is not required, but it is how you will see your house grow.')),
+    );
+
+    // jobs and pets
+    const cmd = (c: string) => el('b', {}, c);
+    body.append(
+      section(
+        'life',
+        'Jobs and pets',
+        el('p', {}, 'Pick your job by commenting ', cmd('JOB'), ' and the job on any post, for example ', cmd('JOB DOCTOR'), ', ', cmd('JOB POLICE'), ', ', cmd('JOB FIREFIGHTER'), ', ', cmd('JOB TEACHER'), ' or ', cmd('JOB VET'), '. You can change it once a week. Tap the hospital, school, KPD or KFD to see who works there.'),
+        el('p', {}, 'Get a pet for your yard: comment ', cmd('PET DOG'), ', ', cmd('PET CAT'), ' or ', cmd('PET BUNNY'), '. Free. Rare pets (fox, owl, golden retriever) come with the shop.'),
+        el('p', { class: 'kb-town-note' }, 'New here? One comment does it all: MOVE IN JOB DOCTOR PET DOG.'),
+      ),
     );
 
     // mayor

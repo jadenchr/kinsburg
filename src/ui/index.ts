@@ -9,6 +9,21 @@ import { addressOf } from './lookup';
 import { renderShareCard, shareOrDownload } from './share';
 import { buyUrl, createTownPanel } from './town';
 import type { TownInfo } from '../data/town';
+import type { BuildingRef } from '../city/api';
+import { PET_NAMES } from '../../shared/residents-format.mjs';
+import { SERVICE_STAFF } from '../../shared/city-layout.mjs';
+
+/** How each building is described, and the comment that gets you a job there. */
+const BUILDING_COPY: Record<Exclude<BuildingRef['kind'], 'townhall'>, { what: string; command: string }> = {
+  hospital: { what: 'Hospital', command: 'JOB DOCTOR or JOB NURSE' },
+  school: { what: 'School', command: 'JOB TEACHER' },
+  library: { what: 'Library', command: 'JOB LIBRARIAN' },
+  vet: { what: 'Vet and dog park', command: 'JOB VET' },
+  police: { what: 'Police station, KPD', command: 'JOB POLICE' },
+  firestation: { what: 'Fire station, KFD', command: 'JOB FIREFIGHTER' },
+};
+const STAFF_SHOWN = 24;
+const plural = (n: number, job: string) => `${n.toLocaleString()} ${n === 1 ? job.toLowerCase() : job.toLowerCase() + 's'}`;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -97,9 +112,23 @@ export const createUI: CreateUI = (root) => {
   const starLink = el('a', { class: 'kb-btn kb-btn-quiet kb-card-buy', target: '_blank', rel: 'noopener', hidden: '' });
   // following is encouraged, never required
   const nudge = el('p', { class: 'kb-card-nudge', hidden: '' });
+  // building cards: who works here (tap a name to fly to their house) and how to join them
+  const staff = el('ul', { class: 'kb-staff', 'aria-label': 'Who works here', hidden: '' });
+  const buildingNote = el('p', { class: 'kb-card-nudge', hidden: '' });
   // announces copy/share results to screen readers (button text alone may not be read)
   const cardStatus = el('p', { class: 'kb-vh', role: 'status', 'aria-live': 'polite' });
-  card.append(cardHead, cardNumber, facts, perks, actions, starLink, nudge, cardStatus);
+  card.append(cardHead, cardNumber, facts, staff, perks, actions, starLink, nudge, buildingNote, cardStatus);
+  /** Show the parts of the card for a resident (true) or a building (false). */
+  const cardMode = (resident: boolean) => {
+    actions.hidden = !resident;
+    staff.hidden = resident;
+    buildingNote.hidden = resident;
+    if (!resident) {
+      perks.hidden = true;
+      starLink.hidden = true;
+      nudge.hidden = true;
+    }
+  };
   const town = createTownPanel();
   let townInfo: TownInfo | null = null;
 
@@ -252,7 +281,50 @@ export const createUI: CreateUI = (root) => {
 
   const detectDemo = (s: CityStats) => setDemo(s.demo);
 
+  function fillBuilding(b: BuildingRef, data: CityData) {
+    if (b.kind === 'townhall') return;
+    const copy = BUILDING_COPY[b.kind];
+    cardTitle.textContent = b.name;
+    cardNumber.textContent = copy.what;
+    const jobs = SERVICE_STAFF[b.kind] as readonly string[];
+    const people = data.residents
+      .filter((r) => jobs.includes(r.job))
+      .sort((a, z) => (z.level ?? 0) - (a.level ?? 0) || a.number - z.number);
+    facts.replaceChildren();
+    for (const job of jobs) {
+      const n = people.filter((r) => r.job === job).length;
+      const li = el('li', { class: 'kb-fact' }, ICONS.people);
+      li.append(document.createTextNode(n ? `${plural(n, job)} work here` : `No ${job.toLowerCase()}s yet`));
+      facts.append(li);
+    }
+    if (b.kind === 'vet') {
+      const pets = data.residents.filter((r) => r.pet).length;
+      const li = el('li', { class: 'kb-fact' }, ICONS.paw);
+      li.append(document.createTextNode(pets ? `${pets.toLocaleString()} ${pets === 1 ? 'pet lives' : 'pets live'} in Kinsburg` : 'No pets in town yet'));
+      facts.append(li);
+    }
+    staff.replaceChildren();
+    for (const r of people.slice(0, STAFF_SHOWN)) {
+      const btn = el('button', { type: 'button' });
+      btn.textContent = `@${r.handle}`;
+      btn.addEventListener('click', () => searchCbs.forEach((cb) => cb(r.handle)));
+      const li = el('li');
+      li.append(btn);
+      staff.append(li);
+    }
+    if (people.length > STAFF_SHOWN) staff.append(el('li', { class: 'kb-staff-more' }, `and ${(people.length - STAFF_SHOWN).toLocaleString()} more`));
+    const account = townInfo?.account ?? data.account;
+    buildingNote.replaceChildren();
+    const ig = el('a', { href: `https://instagram.com/${account}`, target: '_blank', rel: 'noopener' });
+    ig.textContent = `@${account}`;
+    buildingNote.append(`Work here: comment ${copy.command} on any post by `, ig, '. You can change jobs once a week.');
+    if (b.kind === 'vet') buildingNote.append(' Get a pet: comment PET DOG, PET CAT or PET BUNNY. Rare pets (fox, owl, golden retriever) come with the shop.');
+    cardMode(false);
+    staff.hidden = people.length === 0;
+  }
+
   function fillCard(resident: Resident, data: CityData) {
+    cardMode(true);
     cardTitle.textContent = '@' + resident.handle;
     cardNumber.textContent = `Resident #${resident.number.toLocaleString()}`;
 
@@ -269,6 +341,7 @@ export const createUI: CreateUI = (root) => {
     fact(ICONS.key, '', `Moved in on Day ${resident.joinedDay.toLocaleString()}`);
     const storeys = 1 + (resident.level ?? 0);
     if (storeys > 1) fact(ICONS.roof, '', `${storeys}-storey house`);
+    if (resident.pet) fact(ICONS.paw, 'Pet: ', PET_NAMES[resident.pet]);
 
     perks.replaceChildren();
     const has = (p: string) => resident.perks.includes(p as Resident['perks'][number]);
@@ -352,6 +425,15 @@ export const createUI: CreateUI = (root) => {
       hideNotFound();
       current = { resident, data };
       fillCard(resident, data);
+      if (!card.open) card.show();
+      root.classList.add('kb-card-open');
+      cardTitle.focus({ preventScroll: true });
+    },
+    openBuilding(building, data) {
+      if (building.kind === 'townhall') return ui.openTown();
+      hideNotFound();
+      current = null;
+      fillBuilding(building, data);
       if (!card.open) card.show();
       root.classList.add('kb-card-open');
       cardTitle.focus({ preventScroll: true });

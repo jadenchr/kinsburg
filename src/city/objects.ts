@@ -7,6 +7,7 @@ import {
 } from './iso';
 import type { Look } from './ground';
 import type { Obj } from './model';
+import { drawFireStation, drawHospital, drawPet, drawPoliceStation, drawSchool, drawStationLights, drawVet, hipRoof, windowRow } from './services';
 
 const TAU = Math.PI * 2;
 
@@ -23,6 +24,7 @@ export function drawEntry(ctx: CanvasRenderingContext2D, o: Obj, look: Look, det
       const p = projFor(o);
       const r = o.resident!;
       drawHouseEx(ctx, p.cx, p.cy, 64, { style: r.houseStyle, perks: r.perks, sky, highlighted, level: r.level }, detail, o.seed);
+      if (r.pet && detail >= 1) drawPet(ctx, p, sky, r.pet, o.seed);
       return;
     }
     case 'trees':
@@ -41,8 +43,12 @@ export function drawEntry(ctx: CanvasRenderingContext2D, o: Obj, look: Look, det
       drawShop(ctx, o, sky, detail);
       return;
     case 'civic':
-      drawCivic(ctx, o, sky, detail);
-      return;
+      switch (o.plot?.service) {
+        case 'hospital': return drawHospital(ctx, o, sky, detail);
+        case 'school': return drawSchool(ctx, o, sky, detail);
+        case 'vet': return drawVet(ctx, o, sky, detail);
+        default: return drawCivic(ctx, o, sky, detail); // library and unnamed civic lots
+      }
     case 'landmark':
       drawLandmark(ctx, o, look, detail);
       return;
@@ -256,27 +262,6 @@ function drawShop(ctx: CanvasRenderingContext2D, o: Obj, sky: SkyState, detail: 
   }
 }
 
-function hipRoof(ctx: CanvasRenderingContext2D, p: Proj, E1: number, E2: number, z0: number, z1: number, r: number, mat: { l: string; r: string; dark: string }): void {
-  // ridge along u of half-length r; footprint half extents E1 (u), E2 (v)
-  fillPoly(ctx, p, [-E1, -E2, z0, E1, -E2, z0, r, 0, z1, -r, 0, z1], mat.dark);
-  fillPoly(ctx, p, [E1, E2, z0, E1, -E2, z0, r, 0, z1], mat.r);
-  fillPoly(ctx, p, [-E1, E2, z0, E1, E2, z0, r, 0, z1, -r, 0, z1], mat.l);
-}
-
-function windowRow(
-  ctx: CanvasRenderingContext2D, p: Proj, sky: SkyState, face: 'l' | 'r', plane: number,
-  a0: number, a1: number, z0: number, z1: number, n: number, seed: number,
-): void {
-  const span = (a1 - a0) / n;
-  for (let k = 0; k < n; k++) {
-    const a = a0 + span * (k + 0.25);
-    const b = a0 + span * (k + 0.75);
-    const c = glassColor(sky, hash(seed, k) < 0.75, hash(seed, k + 9));
-    if (face === 'l') fillPoly(ctx, p, [a, plane, z0, b, plane, z0, b, plane, z1, a, plane, z1], c);
-    else fillPoly(ctx, p, [plane, b, z0, plane, a, z0, plane, a, z1, plane, b, z1], c);
-  }
-}
-
 function drawCivic(ctx: CanvasRenderingContext2D, o: Obj, sky: SkyState, detail: number): void {
   const p = projFor(o);
   const pal = sky.palette;
@@ -317,6 +302,8 @@ function drawLandmark(ctx: CanvasRenderingContext2D, o: Obj, look: Look, detail:
     case 'monument': return monument(ctx, o, look.sky);
     case 'lighthouse': return lighthouse(ctx, o, look.sky);
     case 'windmill': return windmill(ctx, o, look.sky, detail);
+    case 'police': return drawPoliceStation(ctx, o, look.sky, detail);
+    case 'firestation': return drawFireStation(ctx, o, look.sky, detail);
   }
 }
 
@@ -625,6 +612,8 @@ export function drawAnimated(ctx: CanvasRenderingContext2D, o: Obj, sky: SkyStat
   const p = projFor(o);
   const pal = sky.palette;
   switch (o.landmark?.kind) {
+    case 'police':
+      return drawStationLights(ctx, o, sky, t);
     case 'windmill': {
       const hx = projX(p, 0, 0.42);
       const hy = projY(p, 0, 0.42, WINDMILL_HUB_Z);

@@ -1,6 +1,7 @@
 // Contract for the page UI (everything drawn in HTML over the canvas).
 // Implemented in src/ui/index.ts.
 import type { CityData, Resident } from '../types';
+import type { BuildingRef } from '../city/api';
 import type { SkyState } from '../theme';
 import type { TownInfo } from '../data/town';
 import type { TownSection } from './town';
@@ -25,6 +26,8 @@ export interface AppUI {
   setSky(sky: SkyState, now: Date): void;
   /** Open the resident card. */
   openResident(resident: Resident, data: CityData): void;
+  /** Open the card for a city building: who works there and how to join them. */
+  openBuilding(building: BuildingRef, data: CityData): void;
   closeCard(): void;
   /** Search found nobody with that handle. */
   showNotFound(handle: string, account: string): void;

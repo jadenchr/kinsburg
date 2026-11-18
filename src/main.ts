@@ -100,6 +100,10 @@ async function start() {
   };
 
   city.onSelect((r) => (r ? open(r) : ui.closeCard()));
+  city.onBuilding((b) => {
+    city.clearHighlight();
+    ui.openBuilding(b, data);
+  });
   ui.onCardClosed(() => {
     city.clearHighlight();
     const url = new URL(location.href);

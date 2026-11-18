@@ -8,6 +8,7 @@ import {
   normalizeHandle,
   shardOf,
   traitsFor,
+  withTail,
   FORMAT,
   type Manifest,
   type Row,
@@ -63,15 +64,13 @@ interface ResidentRow {
   perks: number;
   level?: number;
   follower?: number;
+  pet?: number;
 }
-export const toRow = (r: ResidentRow): Row => {
-  const row: Row = [r.handle, r.number, r.joined_day, r.job, r.house_style, r.perks];
-  const level = r.level ?? 0, follower = r.follower ? 1 : 0;
-  if (level || follower) row.push(level); // optional tail, omitted when 0 (see shared/residents-format)
-  if (follower) row.push(1);
-  return row;
-};
-const RESIDENT_COLS = 'handle, number, joined_day, job, house_style, perks, level, follower';
+/** D1 row -> compact Row; the optional tail [level, follower, pet] is cut after its last non-zero value. */
+export const toRow = (r: ResidentRow): Row =>
+  withTail([r.handle, r.number, r.joined_day, r.job, r.house_style, r.perks], [r.level ?? 0, r.follower ? 1 : 0, r.pet ?? 0]);
+/** Every column toRow() needs. */
+export const RESIDENT_COLS = 'handle, number, joined_day, job, house_style, perks, level, follower, pet';
 
 const INSERT_RESIDENT = `
 INSERT INTO residents (number, handle, joined_day, job, house_style, perks, source, ig_user_id)

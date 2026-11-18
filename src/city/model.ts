@@ -60,6 +60,8 @@ export const LANDMARK_HEIGHT: Record<Landmark['kind'], number> = {
   lighthouse: 165,
   windmill: 150,
   market: 44,
+  police: 52,
+  firestation: 82,
 };
 
 export interface Model {
@@ -237,7 +239,7 @@ export function buildModel(data: CityData): Model {
   let maxHeight = 0;
   objs.forEach((o, i) => {
     if (o.resident) byResident.set(o.resident.id, i);
-    if (o.landmark && (o.landmark.kind === 'windmill' || o.landmark.kind === 'lighthouse' || o.landmark.kind === 'fountain')) animated.push(i);
+    if (o.landmark && (o.landmark.kind === 'windmill' || o.landmark.kind === 'lighthouse' || o.landmark.kind === 'fountain' || o.landmark.kind === 'police')) animated.push(i);
     maxHeight = Math.max(maxHeight, o.height);
   });
 

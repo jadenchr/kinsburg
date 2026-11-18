@@ -13,7 +13,7 @@
 // • Reel mode (enterReel, used only behind ?reel=1) turns the loop off and renders
 //   complete frames on demand: no time budget, every visible chunk built, all motion
 //   driven by the reel's own clock.
-import type { Billboard, CreateCityView, ReelControl, ReelFrame, ReelTarget } from './api';
+import type { Billboard, BuildingRef, CreateCityView, ReelControl, ReelFrame, ReelTarget } from './api';
 import type { Resident } from '../types';
 import { COLORS, FONTS, alpha, mix, type SkyState } from '../theme';
 import { Camera, attachInput } from './camera';
@@ -40,7 +40,7 @@ interface Chunk {
 
 const MAX_CHUNK_PX = 40e6;
 const FRAME_BUDGET_MS = 7;
-const HIT_MASS: Record<string, number> = { townhall: 48, fountain: 18, market: 34, monument: 16, lighthouse: 24, windmill: 64 };
+const HIT_MASS: Record<string, number> = { townhall: 48, fountain: 18, market: 34, monument: 16, lighthouse: 24, windmill: 64, police: 40, firestation: 44 };
 
 const tilesPer = (lod: number) => Math.max(2, Math.min(64, Math.round(16 / lod)));
 const detailFor = (scale: number) => (scale >= 0.9 ? 2 : scale >= 0.4 ? 1 : 0);
@@ -64,6 +64,7 @@ export const createCityView: CreateCityView = (canvas) => {
   let skyVer = 0;
   let dpr = 1;
   let selectCb: (r: Resident | null) => void = () => {};
+  let buildingCb: (b: BuildingRef) => void = () => {};
   let highlight = -1;
   let highlightT0 = 0;
   let pendingFocus: string | null = null;
@@ -361,12 +362,13 @@ export const createCityView: CreateCityView = (canvas) => {
     for (const i of rings) drawHighlight(m.objs[i], ringMs, S);
   }
 
-  /** Sponsor billboard on the town square, left of the town hall. Lit from below at night. */
+  /** Sponsor billboard in the open south-west corner of the town square (the police station stands
+   *  left of the town hall). Lit from below at night. */
   function drawBillboard(t: number) {
     const th = model?.townhall;
     if (!billboards.length || !th || !sky) return;
     const b = billboards[Math.floor(t / 8000) % billboards.length];
-    const gx = th.x - 1.2, gy = th.y + th.h - 0.4;
+    const gx = th.x - 2, gy = th.y + th.h + 4.2;
     const x = (gx - gy) * HW, y = (gx + gy) * HH + HH;
     const pal = sky.palette;
     const w = 124, h = 52, post = 34;
@@ -483,6 +485,14 @@ export const createCityView: CreateCityView = (canvas) => {
   start();
 
   // ── picking ──
+  /** The city building an object is, if it's one people can open (services, stations, town hall). */
+  function buildingOf(o: Obj): BuildingRef | null {
+    if (o.kind === 'civic' && o.plot?.service) return { kind: o.plot.service, name: o.plot.name ?? 'City building' };
+    const k = o.landmark?.kind;
+    if (k === 'police' || k === 'firestation' || k === 'townhall') return { kind: k, name: o.landmark!.name };
+    return null;
+  }
+
   function pick(sx: number, sy: number): Obj | null {
     if (!model) return null;
     const m = model;
@@ -525,7 +535,9 @@ export const createCityView: CreateCityView = (canvas) => {
   let detachInput = attachInput(canvas, cam, {
     tap(sx, sy) {
       const o = pick(sx, sy);
-      selectCb(o?.resident ?? null);
+      const b = o && !o.resident ? buildingOf(o) : null;
+      if (b) buildingCb(b);
+      else selectCb(o?.resident ?? null);
     },
     zoomIn(sx, sy) {
       const wx = cam.toWorldX(sx), wy = cam.toWorldY(sy);
@@ -607,6 +619,9 @@ export const createCityView: CreateCityView = (canvas) => {
     clearHighlight() {
       highlight = -1;
       dirty = true;
+    },
+    onBuilding(cb) {
+      buildingCb = cb;
     },
     onSelect(cb) {
       selectCb = cb;

@@ -2,7 +2,9 @@
 import { checkHandle, eventStmt, isPerk, joinMany, setPerk, writeSnapshots, type Perk } from './city';
 import { verifyStripeSignature } from './crypto';
 import { type Env, json, log } from './env';
-import { PERK_BIT } from '../../shared/residents-format.mjs';
+import { PERK_BIT, RARE_PETS } from '../../shared/residents-format.mjs';
+import type { Pet } from '../../src/types';
+import { grantPet } from './life';
 
 const HANDLED = new Set(['checkout.session.completed', 'checkout.session.async_payment_succeeded']);
 
@@ -30,6 +32,18 @@ function itemFrom(env: Env, s: any): string | null {
   if (s?.metadata?.item === 'poster') return 'poster';
   const map = perkMap(env);
   for (const k of [s?.payment_link, s?.metadata?.price, s?.metadata?.product]) if (typeof k === 'string' && map[k] === 'poster') return 'poster';
+  return null;
+}
+
+/** A rare pet ("pet:fox" in STRIPE_PERKS, or metadata.pet). */
+function petFrom(env: Env, s: any): Pet | null {
+  const isRare = (p: unknown): p is Pet => typeof p === 'string' && (RARE_PETS as readonly string[]).includes(p);
+  if (isRare(s?.metadata?.pet)) return s.metadata.pet;
+  const map = perkMap(env);
+  for (const k of [s?.payment_link, s?.metadata?.price, s?.metadata?.product]) {
+    const v = typeof k === 'string' ? map[k] : undefined;
+    if (typeof v === 'string' && v.startsWith('pet:') && isRare(v.slice(4))) return v.slice(4) as Pet;
+  }
   return null;
 }
 
@@ -84,6 +98,19 @@ export async function handleStripeWebhook(req: Request, env: Env): Promise<Respo
         eventStmt(env, 'order', handle || null, { item: 'poster', event: ev.id }),
       ]);
       return json({ ok: true, order: 'poster' });
+    }
+    const pet = petFrom(env, s);
+    if (pet) {
+      const { handle, bad } = checkHandle(rawHandle ?? '');
+      const row = !bad && handle ? await grantPet(env, handle, pet, 'stripe') : null;
+      if (!row) {
+        const detail = { rawHandle, pet, reason: !rawHandle ? 'no handle' : bad ?? 'could not join', session: s.id };
+        await db.batch([finish('review', handle || null, `pet:${pet}`, detail), eventStmt(env, 'stripe_review', handle || null, detail)]);
+        return json({ ok: true, review: true });
+      }
+      await db.batch([finish('done', handle, `pet:${pet}`, { number: row[1] })]);
+      log('stripe_pet', { handle, pet });
+      return json({ ok: true, handle, pet, number: row[1] });
     }
     const perk = perkFrom(env, s);
     const { handle, bad } = checkHandle(rawHandle ?? '');

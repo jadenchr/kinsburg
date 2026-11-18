@@ -444,6 +444,10 @@ dialog.kb-town[open] { display: flex; flex-direction: column; gap: 8px; animatio
 .kb-card-nudge { margin: 0; font-size: 14px; color: var(--ink-soft); }
 .kb-perk-follower { background: color-mix(in srgb, var(--kb-primary) 18%, transparent); color: var(--ink); }
 .kb-nf-how { margin-top: 8px; min-height: 40px; font-size: 14px; }
+/* building card: staff names open their house */
+.kb-staff { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 14px; font-weight: 600; max-height: 132px; overflow: auto; }
+.kb-staff button { min-height: 32px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.kb-staff-more { display: flex; align-items: center; min-height: 32px; color: var(--ink-soft); font-weight: 500; }
 
 @media (max-width: 899px), (max-height: 599px) {
   dialog.kb-town {

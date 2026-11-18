@@ -349,6 +349,10 @@ function genCentre(L, rng) {
   lm('townhall', 'Kinsburg Town Hall', 'townhall', HP - 1, HP - 4, 3, 3);
   lm('fountain', 'Wishing Fountain', 'fountain', HP, HP, 1, 1);
   lm('market', 'Kinsburg Market', 'market', HP + 2, HP + 2, 3, 2);
+  // Police and fire stations flank the town hall on the square (plaza tiles, never house lots, so
+  // adding them moved no one). Both open onto the ring road for their vehicles.
+  lm('kpd', 'Kinsburg Police Department', 'police', HP - 4, HP - 4, 2, 2);
+  lm('kfd', 'Kinsburg Fire Department', 'firestation', HP + 3, HP - 4, 2, 2);
   // Founders Monument: 2x2 in the centre of the corner park (park tiles under it, no trees).
   const mx = HP + (qx > 0 ? 7 : -8), my = HP + (qy > 0 ? 7 : -8);
   for (let yy = my; yy < my + 2; yy++) for (let xx = mx; xx < mx + 2; xx++) { L.t[li(xx, yy)] = C.p; }
@@ -670,6 +674,17 @@ export function buildCity({ seed = 'kinsburg', capacity = 100 } = {}) {
     }
   }
 
+  // 8. Civic lots become city services, in plot-id order (append-only, so a lot keeps its service).
+  let civicN = 0;
+  for (const p of plots) {
+    if (p.kind !== 'civic') continue;
+    const svc = civicN < FIRST_SERVICES.length ? FIRST_SERVICES[civicN] : { service: LATER_SERVICES[(civicN - FIRST_SERVICES.length) % LATER_SERVICES.length] };
+    const word = String(streets[p.streetId]?.name ?? 'Kinsburg').split(' ')[0];
+    p.service = svc.service;
+    p.name = svc.name ?? `${word} ${SERVICE_NOUN[svc.service]}`;
+    civicN++;
+  }
+
   // Map coordinates.
   for (const p of plots) { p.x -= xmin; p.y -= ymin; }
   for (const l of landmarks) { l.x -= xmin; l.y -= ymin; }
@@ -683,6 +698,30 @@ export function buildCity({ seed = 'kinsburg', capacity = 100 } = {}) {
     streetOf, // Int32Array per tile, street id of each road tile (-1 elsewhere); not serialised
   };
 }
+
+// ---------------------------------------------------------------- city services
+
+/** The centre's three civic lots, then a repeating mix for civic lots in new neighbourhoods. */
+const FIRST_SERVICES = [
+  { service: 'hospital', name: 'Kinsburg General Hospital' },
+  { service: 'school', name: 'Kinsburg Elementary' },
+  { service: 'vet', name: 'Kinsburg Vet & Dog Park' },
+];
+const LATER_SERVICES = ['library', 'school', 'hospital', 'vet'];
+const SERVICE_NOUN = { hospital: 'Clinic', school: 'School', vet: 'Vet', library: 'Library' };
+
+/**
+ * Who works where (job names from shared/residents-format.mjs JOBS). Keys are civic plot services
+ * plus the landmark kinds of the stations and the town hall.
+ */
+export const SERVICE_STAFF = {
+  hospital: ['Doctor', 'Nurse'],
+  school: ['Teacher'],
+  library: ['Librarian'],
+  vet: ['Vet'],
+  police: ['Police officer'],
+  firestation: ['Firefighter'],
+};
 
 /**
  * Move residents in, in order. residents[i] gets house plot fillOrder[i].
@@ -715,6 +754,7 @@ export function toCityData(city, residents, { name = 'Kinsburg', account = 'kins
     plots: city.plots.map((p) => {
       const o = { id: p.id, x: p.x, y: p.y, w: p.w, h: p.h, kind: p.kind, streetId: p.streetId, houseNumber: p.houseNumber };
       if (p.residentId) o.residentId = p.residentId;
+      if (p.service) { o.service = p.service; o.name = p.name; }
       return o;
     }),
     landmarks: city.landmarks,
@@ -723,6 +763,7 @@ export function toCityData(city, residents, { name = 'Kinsburg', account = 'kins
       plotId: r.plotId, houseStyle: r.houseStyle, perks: r.perks,
       ...(r.level ? { level: r.level } : {}),
       ...(r.follower ? { follower: true } : {}),
+      ...(r.pet ? { pet: r.pet } : {}),
     })),
     demo,
   };
@@ -730,7 +771,7 @@ export function toCityData(city, residents, { name = 'Kinsburg', account = 'kins
 
 // ---------------------------------------------------------------- validation & preview
 
-const LANDMARK_KINDS = ['townhall', 'fountain', 'monument', 'lighthouse', 'windmill', 'market'];
+const LANDMARK_KINDS = ['townhall', 'fountain', 'monument', 'lighthouse', 'windmill', 'market', 'police', 'firestation'];
 const PERKS = ['star', 'goldRoof', 'monument', 'street'];
 const HANDLE_RE = /^[a-z0-9._]{1,30}$/; // Instagram: 1-30 chars
 
@@ -815,7 +856,7 @@ export function asciiMap(d, cols = 60, rows = 30) {
   const sx = Math.max(1, Math.ceil(W / cols)), sy = Math.max(1, Math.ceil(H / rows));
   const kindAt = new Map();
   for (const p of d.plots) for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) kindAt.set(y * W + x, p.kind === 'house' ? (p.residentId ? '#' : 'o') : p.kind === 'shop' ? '$' : 'C');
-  const lmChar = { townhall: 'H', fountain: 'F', monument: 'M', lighthouse: 'L', windmill: 'W', market: 'K' };
+  const lmChar = { townhall: 'H', fountain: 'F', monument: 'M', lighthouse: 'L', windmill: 'W', market: 'K', police: 'P', firestation: 'R' };
   const tileChar = { g: '.', r: '+', w: '~', p: '"', z: '=', f: ',', t: '^', s: ':' };
   const weight = { '#': 1.6, o: 1.2, $: 3, C: 3, '+': 1, '~': 1.2, '"': 1.3, '=': 2, ',': 1, '^': 0.9, ':': 1.1, '.': 0.6 };
   const out = [];

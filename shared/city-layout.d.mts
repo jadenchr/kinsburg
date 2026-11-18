@@ -49,3 +49,6 @@ export declare function toCityData(
 ): CityData;
 export declare function validateCityData(d: CityData, opts?: { jobs?: readonly string[]; streetOf?: Int32Array }): CityStats;
 export declare function asciiMap(d: CityData, cols?: number, rows?: number): string;
+
+/** Job names working at each service (civic plot service or station/landmark kind). */
+export declare const SERVICE_STAFF: Readonly<Record<'hospital' | 'school' | 'library' | 'vet' | 'police' | 'firestation', readonly string[]>>;

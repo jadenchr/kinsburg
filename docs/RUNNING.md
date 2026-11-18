@@ -101,6 +101,29 @@ In `wrangler.jsonc`, set these to `"true"`. Then I'll deploy, or you commit and 
 
 Following is never required for a house. Followers get a badge, and everyone else sees a friendly "Follow @kinsburgtown to watch your house grow".
 
+## Jobs and pets
+
+Residents run these themselves by commenting on any @kinsburgtown post:
+
+- `JOB DOCTOR`, `JOB POLICE`, `JOB FIREFIGHTER`, `JOB TEACHER`, `JOB VET`, or any job on the list. The first choice is always allowed; after that, one change a week. Someone who isn't a resident yet moves in with that job.
+- `PET DOG`, `PET CAT`, `PET BUNNY`: free. `NO PET` removes it.
+- `PET FOX`, `PET OWL`, `PET GOLDEN`: only after buying that pet. Until then the comment is ignored.
+- One comment can do everything: `MOVE IN JOB DOCTOR PET DOG`.
+
+Tapping the hospital, school, vet, KPD or KFD on the map lists who works there.
+
+**Sell rare pets.** Make a Stripe Payment Link per rare pet (same custom `Instagram @handle` field as the perks) and map it in `STRIPE_PERKS` in `wrangler.jsonc`, for example `"plink_abc": "pet:fox"`. The buyer moves in if needed, owns the pet for good, and it appears in their yard.
+
+**By hand** (a manual sale, or fixing a mistake):
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/pet -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"handle":"someone","pet":"fox","own":true}'
+```
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/job -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"handle":"someone","job":"Police officer"}'
+```
+
 ## How houses grow
 
 Every comment a resident leaves on our posts counts. At 3 comments the house gets a second storey, at 10 a third, and at 30 a fourth. Only the number of comments is stored, never what they say.

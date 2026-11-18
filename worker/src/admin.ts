@@ -10,13 +10,14 @@
 //   GET  /admin/cast | POST /admin/cast { handle, remove? }   who may appear in videos (CAST ME)
 //   GET  /admin/stats
 import { shardOf } from '../../shared/residents-format.mjs';
-import { checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
+import { RESIDENT_COLS, checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
 import { safeEqual } from './crypto';
 import { type Env, json, shardSize } from './env';
 import { igRelay, pollComments, repliesAdmin } from './instagram';
 import { putMedia } from './media';
 import { townAdmin } from './town';
 import { castAdmin } from './cast';
+import { lifeAdmin } from './life';
 
 export async function handleAdmin(req: Request, env: Env, path: string): Promise<Response> {
   if (!env.ADMIN_TOKEN) return json({ error: 'admin disabled (set ADMIN_TOKEN)' }, 503);
@@ -36,6 +37,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
   }
   body ??= {};
 
+  const life = await lifeAdmin(env, path, body);
+  if (life) return life;
   const town = await townAdmin(env, path, body);
   if (town) return town;
 
@@ -55,7 +58,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       if (body.evict) {
         // Removing a resident would shift every later plot, so the slot stays and gets a neutral name.
         const row = await env.DB.prepare(
-          `UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0 WHERE handle = ?1 RETURNING handle, number, joined_day, job, house_style, perks`,
+          `UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, pet = 0, pets_owned = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`,
         ).bind(handle).first<any>();
         if (row) {
           await writeSnapshots(env, [toRow(row)], stmts);

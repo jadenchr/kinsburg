@@ -7,6 +7,7 @@ import { eventStmt, joinMany, writeSnapshots, healSnapshots, type JoinResult, ty
 import { verifyMetaSignature } from './crypto';
 import { closeDuePolls, handleDms, privateReply, processTownComments } from './town';
 import { processCastComments } from './cast';
+import { processLifeComments } from './life';
 import { type Env, intVar, json, log } from './env';
 
 export interface IgComment {
@@ -234,9 +235,10 @@ export async function pollComments(env: Env) {
   const catchUp = await replyToMissed(env, comments, ig, await replyAllowance(env));
   const town = await processTownComments(env, comments);
   const cast = await processCastComments(env, comments);
+  const life = await processLifeComments(env, comments);
   const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied };
+  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
@@ -278,8 +280,9 @@ export async function handleInstagramWebhook(req: Request, env: Env): Promise<Re
     const report = await processComments(env, comments, 'webhook', client);
     const town = await processTownComments(env, comments);
     const cast = await processCastComments(env, comments);
+    const life = await processLifeComments(env, comments);
     const dms = messaging.length ? await handleDms(env, client, messaging) : null;
-    return json({ ok: true, ...report, town, cast: cast.cast, dms });
+    return json({ ok: true, ...report, town, cast: cast.cast, life, dms });
   } catch (err) {
     log('ig_webhook_failed', { error: String(err) });
     return new Response('retry later', { status: 500 }); // Meta retries for up to 36 h

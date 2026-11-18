@@ -31,7 +31,7 @@ const SECRETS = {
 const VARS = {
   IG_API_BASE: `http://127.0.0.1:${MOCK_PORT}/v27.0`,
   EDGE_CACHE: 'false',
-  STRIPE_PERKS: JSON.stringify({ plink_star: 'star', plink_gold: 'goldRoof', plink_poster: 'poster' }),
+  STRIPE_PERKS: JSON.stringify({ plink_star: 'star', plink_gold: 'goldRoof', plink_poster: 'poster', plink_owl: 'pet:owl' }),
   IG_DM_ENABLED: 'true',
 };
 
@@ -308,6 +308,40 @@ try {
   ok(!(await castList()).includes('new_person1'), 'an old CAST ME comment never re-grants after removal');
   r = await fetch(`${BASE}/admin/cast`);
   ok(r.status === 401, 'cast list needs the admin token', r.status);
+
+  console.log('\nJobs and pets');
+  const resident = async (h) => (await loadCity()).data.residents.find((x) => x.id === h);
+  r = await castHook([
+    ['c950', 'JOB POLICE 🚓', 'third_person'],
+    ['c951', 'pet dog', 'third_person'],
+    ['c952', 'MOVE IN JOB DOCTOR PET CAT', 'combo.person'],
+    ['c953', 'job vet', 'vet.newcomer'],
+    ['c954', 'PET FOX', 'second.person'],
+    ['c955', 'great job doctor', 'lurker'],
+  ]);
+  ok(r.status === 200, 'job and pet comments accepted', r.status);
+  let tp2 = await resident('third_person');
+  ok(tp2?.job === 'Police officer' && tp2?.pet === 'dog', 'JOB POLICE and PET DOG set job and pet', tp2);
+  const combo = await resident('combo.person');
+  ok(combo?.job === 'Doctor' && combo?.pet === 'cat', 'MOVE IN JOB DOCTOR PET CAT does all three in one comment', combo);
+  ok((await resident('vet.newcomer'))?.job === 'Vet', 'a JOB comment from someone new moves them in with that job');
+  ok(!(await resident('second.person'))?.pet, 'a rare pet (fox) needs buying first');
+  ok(!(await resident('lurker')), '"great job doctor" is not a command');
+  await castHook([['c956', 'JOB FIREFIGHTER', 'third_person']]);
+  ok((await resident('third_person'))?.job === 'Police officer', 'a second job change within a week is refused');
+  r = await admin('/admin/pet', { handle: 'second.person', pet: 'fox', own: true });
+  ok(r.status === 200 && (await resident('second.person'))?.pet === 'fox', 'admin grants a rare pet (manual sale)');
+  await castHook([['c957', 'pet bunny', 'second.person']]);
+  await castHook([['c958', 'pet fox', 'second.person']]);
+  ok((await resident('second.person'))?.pet === 'fox', 'an owned rare pet can be picked again after switching');
+  await castHook([['c951', 'pet dog', 'third_person'], ['c959', 'no pet', 'third_person']]);
+  ok(!(await resident('third_person'))?.pet, 'NO PET removes it; an old comment is not replayed');
+  r = await stripeEvent('evt_7', { id: 'cs_7', payment_status: 'paid', payment_link: 'plink_owl', custom_fields: [{ key: 'instagramhandle', text: { value: 'owl.buyer' } }] });
+  ok(r.status === 200 && (await resident('owl.buyer'))?.pet === 'owl', 'buying a rare pet moves the buyer in with it', await r.clone().json().catch(() => null));
+  r = await admin('/admin/job', { handle: 'third_person', job: 'Firefighter' });
+  ok(r.status === 200 && (await resident('third_person'))?.job === 'Firefighter', 'admin can set a job past the weekly limit');
+  ({ data } = await loadCity());
+  try { validateCityData(data); ok(true, 'city still valid with jobs and pets'); } catch (e) { ok(false, 'city still valid with jobs and pets', String(e)); }
 
   console.log('\nDMs (after App Review)');
   const dm = (sender, text) => {
