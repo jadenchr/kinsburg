@@ -573,6 +573,94 @@ async function reelT1({ tmp, page, R, cardOf }) {
   });
 }
 
+// ── Live: "Let's build this city" (Jadie's voice, real neighbours as hover cards) ──
+// Shows only the handles asked for by name (FEATURED); everyone else is a gold ring with no name.
+const FEATURED = ['itsjadenchristy', 'metabro.pov'];
+async function reelL1({ tmp, page, R }) {
+  const J = R.find((r) => r.id === JADIE);
+  if (!J) throw new Error('@jadiedevs is not a resident');
+  const N = FEATURED.map((id) => R.find((r) => r.id === id)).filter(Boolean);
+  if (N.length !== FEATURED.length) throw new Error(`not residents: ${FEATURED.filter((id) => !R.some((r) => r.id === id)).join(', ')}`);
+  const n = R.length, next = n + 1;
+  const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  const say = (k) => (k < 20 ? words[k] : k < 100 ? tens[Math.floor(k / 10)] + (k % 10 ? '-' + words[k % 10] : '') : String(k));
+  const first = Math.min(3, n);
+  const v = await narrate(tmp, 'L1', [
+    { text: `This city had ${say(first)} people.`, gap: 0.25 },
+    { text: `Now it has *${n}*.`, say: `Now it has ${say(n)}.`, gap: 0.4 },
+    { text: 'Meet my neighbours.', gap: 0.3 },
+    { text: "And this one's mine.", gap: 0.35 },
+    { text: 'But most of this island is still empty.', gap: 0.3 },
+    { text: "So let's build it together.", gap: 0.3 },
+    { text: 'Comment MOVE IN, and be my neighbour.', say: 'Comment, move in, and be my neighbour.', gap: 1.2 },
+  ], JADIE_VOICE);
+  const ls = v.lines, D = v.duration, xf = 0.35;
+  // four shots: [island grows] [neighbours] [Jadie's house → island] [next plot]
+  const cuts = [0, ls[2].start - 0.25, ls[3].start - 0.2, ls[5].start - 0.25, D];
+  const home = { at: JADIE, dx: -36, dy: 18 }, spot = { at: 'next', dx: -36, dy: 18 };
+  const mid = N[0];
+  const shot = async (i, build) => {
+    const d = cuts[i + 1] - cuts[i] + (i < cuts.length - 2 ? xf : 0);
+    const loc = (x) => x - cuts[i];
+    const talk = ls.filter((l) => l.end > cuts[i] && l.start < cuts[i + 1]).map((l) => ({ from: loc(l.start), to: loc(l.end) }));
+    const s = build(d, loc);
+    return { file: await film(page, tmp, `L1-${i}`, { duration: d, ease: 'sine', hours: [{ t: 0, h: 22 }], ...s, actors: (s.actors ?? []).map((a) => ({ ...a, talk })) }), at: cuts[i] };
+  };
+  const shots = [];
+  // 1 · the island: the first three houses ringed, then a ring for every resident as the number lands
+  shots.push(await shot(0, (d, loc) => {
+    const grow = loc(ls[1].start) - 0.1;
+    return {
+      keys: [{ t: 0, target: mid.id, zoom: 1.5, y: 0.6 }, { t: d, target: mid.id, zoom: 0.9, y: 0.58 }],
+      rings: R.map((r, i) => ({ id: r.id, from: i < first ? 0.15 : grow + ((i - first) / Math.max(1, n - first)) * 1.1 })),
+    };
+  }));
+  // 2 · neighbours: hover cards over the featured homes, Jadie waving in the street
+  shots.push(await shot(1, (d) => ({
+    keys: [{ t: 0, target: N[0].id, zoom: 5.6, y: 0.62 }, { t: d, target: N[N.length - 1].id, zoom: 6.0, y: 0.62 }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, at: N[0].id, dx: -12, dy: 34, pose: 'wave' }, { t: d, at: N[0].id, dx: -12, dy: 34, pose: 'wave' }] }],
+    rings: N.map((r) => ({ id: r.id, from: 0.1 })),
+    labels: N.map((r, i) => ({ id: r.id, text: `@${r.id}`, sub: `Resident #${r.number} · ${r.job}`, from: 0.2 + i * 0.35, to: d + 1 })),
+  })));
+  // 3 · Jadie's house and card, then a long pull out over the empty island
+  shots.push(await shot(2, (d, loc) => {
+    const out0 = loc(ls[4].start) - 0.2;
+    return {
+      keys: [{ t: 0, target: 'actor:jadie', zoom: 7.6, y: 0.62 }, { t: out0, target: 'actor:jadie', zoom: 8.0, y: 0.62 }, { t: d, target: JADIE, zoom: 0.55, y: 0.55 }],
+      actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'point', face: 1 }, { t: d, ...home, pose: 'point', face: 1 }] }],
+      rings: [{ id: JADIE, from: 0.1, to: out0 + 0.6 }, { id: 'next', from: out0 + 0.8 }],
+      labels: [{ id: JADIE, text: `@${JADIE}`, sub: `Resident #${J.number} · ${J.job}`, from: 0.25, to: out0 + 0.4 }],
+    };
+  }));
+  // 4 · the next plot: Jadie walks up to it, waves; sign and MOVE IN
+  shots.push(await shot(3, (d) => {
+    const arrive = 1.3;
+    return {
+      keys: [{ t: 0, target: 'actor:jadie', zoom: 6.6, y: 0.62 }, { t: arrive, target: 'actor:jadie', zoom: 7.2, y: 0.62 }, { t: d, target: 'actor:jadie', zoom: 6.4, y: 0.62 }],
+      actors: [{ id: 'jadie', keys: [{ t: 0, at: 'next', dx: -110, dy: 55, pose: 'idle' }, { t: arrive, ...spot, pose: 'idle' }, { t: arrive + 0.2, ...spot, pose: 'wave' }, { t: d, ...spot, pose: 'wave' }] }],
+      rings: [{ id: 'next', from: 0 }],
+    };
+  }));
+
+  const right = `${n.toLocaleString('en-US')} residents`;
+  const overlays = await common(tmp, 'L1', v, right, { title: 'live city', words: 1 });
+  overlays.push({ png: await png(join(tmp, 'L1-title.png'), `<div class="cap" style="font-size:104px"><div>We're building <b>a city</b></div></div>`), from: 0, to: cuts[1] + 0.1, noFade: true });
+  overlays.push({ png: await sign(tmp, 'L1', 'Next house', `#${next}`), from: cuts[3] + 0.9, to: ls[6].start, fade: 0.25 });
+  overlays.push({ png: await bubble(tmp, 'L1', 660), from: ls[6].start, to: D, fade: 0.25 });
+
+  await finish(tmp, 'L1', {
+    name: 'build-01', xf,
+    shots, overlays, voice: v, duration: D,
+    caption: `This city had ${first} people. Now it has ${n}. 🏡\n\nMeet a few of the neighbours: @${N.map((r) => r.id).join(', @')} and me, @${JADIE}. Every house here is a real person on Instagram, and most of the island is still empty, so let's build it together.\n\nComment MOVE IN and house #${next} is yours. Want to be in the next video? Comment CAST ME.`,
+    coverBg: await thumbStill(page, tmp, 'L1', { target: mid.id, zoom: 1.15, y: 0.72, rings: R.map((r) => r.id) }),
+    coverHtml: `<div style="position:absolute;left:60px;right:60px;top:${THUMB.top}px;text-align:center;color:${C.white};font-weight:900;text-transform:uppercase;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 34px rgba(11,20,48,.6)">
+  <div style="font-size:120px;line-height:1">${first} people</div>
+  <div style="font-size:300px;line-height:.9;color:${C.gold};letter-spacing:-.03em">→ ${n}</div>
+  <div style="font-size:84px;line-height:1.05;margin-top:14px;text-wrap:balance">let's build this city</div></div>`,
+  });
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), 'kinsburg-launch-'));
 try {
@@ -589,7 +677,7 @@ try {
   };
   const right = `${R.length.toLocaleString('en-US')} residents`;
   log(`${R.length} residents${demo ? ' (sample residents: re-run with --url after launch)' : ''}`);
-  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1]]) {
+  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1], ['L1', reelL1]]) {
     if (ONLY ? ONLY !== id : !['A', 'B', 'C'].includes(id)) continue; // D and the series only on request
     const t0 = Date.now();
     await make({ tmp, page, R, right, cardOf });

@@ -424,7 +424,9 @@ export const createCityView: CreateCityView = (canvas) => {
       const ph = (((ms % 1600) + 1600) % 1600) / 1600;
       ctx.save();
       ctx.beginPath();
-      ctx.ellipse(p.cx, p.cy, (0.62 + ph * 0.55) * size * 64 * 0.7071, (0.62 + ph * 0.55) * size * 64 * 0.3536, 0, 0, Math.PI * 2);
+      // never smaller than ~18 px on screen, so a highlighted home still reads when zoomed far out
+      const rx = Math.max((0.62 + ph * 0.55) * size * 64 * 0.7071, (18 + ph * 14) / S);
+      ctx.ellipse(p.cx, p.cy, rx, rx * 0.5, 0, 0, Math.PI * 2);
       ctx.lineWidth = Math.max(2, 2.5 / S);
       ctx.strokeStyle = alpha(COLORS.gold, 0.8 * (1 - ph));
       ctx.stroke();
@@ -439,6 +441,18 @@ export const createCityView: CreateCityView = (canvas) => {
     // repaint what stands in front of it so the ring/house doesn't cover it
     const r: Region = { x0: o.x, y0: o.y, x1: o.x + o.w + 4, y1: o.y + o.h + 4, dMin: -1e9, dMax: 1e9, sMin: o.depth + 1, sMax: 1e9 };
     drawObjects(ctx, r, detail);
+    if (S < 1.6) {
+      // zoomed out the house is a few pixels: a solid gold dot just above the roof marks it
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy - o.height - 7 / S, 6.5 / S, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.gold;
+      ctx.fill();
+      ctx.lineWidth = 2 / S;
+      ctx.strokeStyle = alpha(COLORS.ink, 0.7);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   function needsFrame(now: number): boolean {
