@@ -7,6 +7,7 @@ import {
 } from './iso';
 import type { Look } from './ground';
 import type { Obj } from './model';
+import { drawBuild, drawHoldSign, drawSecret } from './builds';
 import { drawFireStation, drawHospital, drawPet, drawPoliceStation, drawSchool, drawStationLights, drawVet, hipRoof, windowRow } from './services';
 
 const TAU = Math.PI * 2;
@@ -38,6 +39,13 @@ export function drawEntry(ctx: CanvasRenderingContext2D, o: Obj, look: Look, det
       return;
     case 'lot':
       drawLot(ctx, o, look, detail);
+      if (o.hold) drawHoldSign(ctx, o, look, detail, projFor(o));
+      return;
+    case 'build':
+      drawBuild(ctx, o, look, detail, projFor(o));
+      return;
+    case 'secret':
+      drawSecret(ctx, o, look, detail, projFor(o));
       return;
     case 'shop':
       drawShop(ctx, o, sky, detail);

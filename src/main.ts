@@ -5,6 +5,7 @@ import { createCityView } from './city';
 import { createUI } from './ui';
 import { loadCity } from './data/load';
 import { loadTown } from './data/town';
+import { SECRETS } from './city/sites';
 
 const canvas = document.getElementById('city') as HTMLCanvasElement;
 const ui = createUI(document.getElementById('ui') as HTMLElement);
@@ -80,13 +81,51 @@ async function start() {
     const town = params.has('poster') ? null : await loadTown(data.demo);
     if (town) city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
     if (town) city.setIncidents(town.sim?.open ?? []);
-    return void import('./reel').then((m) => m.startReel(city, data, params));
+    if (town) {
+      city.setExtras(town.builds ?? [], town.holds ?? []);
+      city.setBesties(town.besties ?? []);
+    }
+    return void import('./reel').then((m) => m.startReel(city, data, params, town));
   }
-  ui.setStats({ day: cityDay(data), residents: data.residents.length, demo: data.demo });
+  ui.setStats({ day: cityDay(data), residents: data.residents.filter((r) => !r.handle.startsWith('vacant.lot.')).length, demo: data.demo });
+
+  // hidden spots found so far (kept in this browser only; works without storage)
+  const STORE = 'kinsburg.secrets';
+  const found = new Set<number>();
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE) ?? '[]') as unknown;
+    if (Array.isArray(saved)) for (const n of saved) if (Number.isInteger(n) && n >= 0 && n < SECRETS.length) found.add(n as number);
+  } catch {
+    /* no storage: the counter just starts at 0 each visit */
+  }
+  const syncSecrets = () => {
+    city.setSecretsFound([...found]);
+    ui.setSecrets(found.size, SECRETS.length);
+  };
+  syncSecrets();
+  city.onSecret((s) => {
+    const fresh = !found.has(s.index);
+    found.add(s.index);
+    try {
+      localStorage.setItem(STORE, JSON.stringify([...found]));
+    } catch {
+      /* ignore */
+    }
+    syncSecrets();
+    ui.toast(fresh ? `You found the ${s.name}! ${found.size}/${SECRETS.length} secret spots` : `The ${s.name} again. ${found.size}/${SECRETS.length} secret spots found`);
+  });
+  city.onBuild((b) => {
+    city.clearHighlight();
+    ui.openBuild(b);
+    city.focusBuild(b.id);
+  });
+  city.onHold((h) => ui.toast(`Saved for a bestie 💛 ${h.days} ${h.days === 1 ? 'day' : 'days'} left`));
   // town hall: mayor, votes, sponsors (billboards) and perk links. Loads after the map is up.
   const applyTown = (town: Awaited<ReturnType<typeof loadTown>>) => {
     city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
     city.setIncidents(town.sim?.open ?? []);
+    city.setExtras(town.builds ?? [], town.holds ?? []);
+    city.setBesties(town.besties ?? []);
     ui.setTown(town, data);
   };
   loadTown(data.demo).then((town) => {

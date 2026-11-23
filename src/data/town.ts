@@ -55,6 +55,14 @@ export interface TownInfo {
   account: string;
   /** the city simulation; missing on an older Worker */
   sim?: TownSim;
+  /** what commenters got built, oldest first (id = build order, never reused); missing on an older Worker */
+  builds?: { id: number; kind: string; by: string; day: number; likes: number }[];
+  /** plots held for a bestie: the vacant lot's resident number, and days left */
+  holds?: { number: number; days: number }[];
+  /** pairs of resident handles who are besties */
+  besties?: [string, string][];
+  /** open build requests, most liked first (at most 10) */
+  requests?: { kind: string; likes: number; count: number }[];
 }
 
 const EMPTY: TownInfo = { day: 1, mayor: null, polls: [], sponsors: [], perkLinks: {}, levelAt: [3, 10, 30], account: 'kinsburgtown' };

@@ -6,6 +6,8 @@
 //   POST /admin/rebuild { shard? }                       rebuild snapshot shard(s) from the residents table
 //   POST /admin/check-comments                           run the comment poller now (/admin/poll is the vote poll)
 //   POST /admin/replies { dryRun?, max? }               reply to MOVE IN comments that were missed
+//   POST /admin/reply   { commentId, message }           one hand-picked reply (daily cap, honours pauses)
+//   POST /admin/builds  { run?, remove? }                list builds; run today's builds now; hide one
 //   POST /admin/ig      { method, path, params } | { check } | { whoami } relay the daily Reel's Instagram calls
 //   GET  /admin/cast | POST /admin/cast { handle, remove? }   who may appear in videos (CAST ME)
 //   GET  /admin/stats
@@ -13,7 +15,8 @@ import { shardOf } from '../../shared/residents-format.mjs';
 import { RESIDENT_COLS, checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
 import { safeEqual } from './crypto';
 import { type Env, json, shardSize } from './env';
-import { igRelay, pollComments, repliesAdmin } from './instagram';
+import { handReply, igRelay, pollComments, repliesAdmin } from './instagram';
+import { buildsAdmin } from './builds';
 import { putMedia } from './media';
 import { townAdmin } from './town';
 import { castAdmin } from './cast';
@@ -97,6 +100,10 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       return json(await pollComments(env));
     case '/admin/replies':
       return json(await repliesAdmin(env, body));
+    case '/admin/reply':
+      return json(await handReply(env, body));
+    case '/admin/builds':
+      return json(await buildsAdmin(env, body));
     case '/admin/ig':
       return igRelay(env, body);
     default:

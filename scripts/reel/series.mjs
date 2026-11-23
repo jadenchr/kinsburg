@@ -142,6 +142,28 @@ const article = (w) => (/^[aeiou]/i.test(w) ? 'An' : 'A');
  * Which series runs on a given day when none is chosen: mostly the nightly "Lights on", with
  * a progress post, a resident of the day and a new-street post spread through the week.
  */
+// The evening Reel: what the city built today from comment requests (worker/src/builds.ts).
+// stats.builds = [{ label, emoji, by }] built today; by = plain name of who asked first.
+// Never "like to vote": the caption asks for ideas in the comments, nothing else.
+SERIES['built-today'] = {
+  title: (s) => `Built today · day ${s.day}`,
+  subtitle: (s) => (s.builds?.length ? s.builds.map((b) => `${b.emoji} ${b.label}`).slice(0, 3).join('  ') : `${n(s.residents)} residents`),
+  caption: (s) => {
+    const built = s.builds ?? [];
+    const lines = [
+      built.length === 1
+        ? `Day ${s.day} in ${s.city}: you asked for a ${built[0].label.toLowerCase()}, so we built one.`
+        : `Day ${s.day} in ${s.city}: you asked, we built ${built.length} things.`,
+      ...built.slice(0, 4).map((b) => `${b.emoji} ${b.label}, first asked for by ${b.by}.`),
+      'What should we build next? Tell us in the comments: the favourite ideas get built tomorrow.',
+      'Bringing a bestie? Comment MOVE IN @their_name and we save the house next door for 7 days.',
+      'Want a house of your own? Comment MOVE IN.',
+    ];
+    return lines;
+  },
+  hashtags: ['#citybuilder', '#cozygames', '#youaskedwebuilt', '#indiegame'],
+};
+
 export function seriesForDate(isoDate) {
   const weekday = new Date(isoDate + 'T12:00:00Z').getUTCDay(); // 0 Sunday
   return ['day', 'lights-on', 'day', 'resident-of-the-day', 'lights-on', 'new-street', 'lights-on'][weekday];

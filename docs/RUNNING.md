@@ -163,7 +163,7 @@ Every comment a resident leaves on our posts counts. At 3 comments the house get
 
 ## Comment replies
 
-Kinsburg replies to every MOVE IN comment, at a human pace: at most 2 replies per 15-minute check, a few seconds apart, and at most 80 a day. Instagram blocks accounts that post bursts of similar comments, so this pace is deliberate. Comments that miss out (over the limit, or while paused) wait in a queue and get their reply on a later check.
+**Routine welcome replies are off** (`IG_REPLY_ENABLED` is `false` in wrangler.jsonc): Instagram kept blocking the account for bursts of replies, so new residents are shouted out in the daily Reels instead. Reply by hand to the comments that matter, up to the daily cap (see "Hand-picked replies" below). With replies switched back on, Kinsburg replies to every MOVE IN comment, at a human pace: at most 2 replies per 15-minute check, a few seconds apart, and at most 80 a day. Instagram blocks accounts that post bursts of similar comments, so this pace is deliberate. Comments that miss out (over the limit, or while paused) wait in a queue and get their reply on a later check.
 
 If Instagram blocks commenting anyway, Kinsburg stops trying: replies pause for 6 hours, then 12, 24 and up to 48 if it happens again, and continue on their own afterwards. Retrying into a block only makes it longer.
 
@@ -182,3 +182,34 @@ curl -s -X POST https://kinsburg.com/admin/check-comments -H "Authorization: Bea
 ```
 
 **The alarm:** the **Health check** workflow on GitHub runs every 6 hours. It fails, and GitHub emails you, when Instagram is disconnected, keeps blocking replies for 24 hours or more, or more than 40 replies are waiting.
+
+### Hand-picked replies
+
+The dry run above lists unanswered comments with their `id`. Reply to one (it counts toward the daily cap and waits out any Instagram block):
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/reply -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"commentId":"17900000000000000","message":"Yes! Comment MOVE IN and you are in 🏡"}'
+```
+
+## Build what you ask
+
+Comments that ask for something the city can build ("build a pool", "can we get a ferris wheel", "Eiffel Tower!") become requests for one of 22 kinds (shared/builds.mjs). Every day after 12:00 UTC the 3 kinds whose requests have the most Instagram likes in total get built; requests older than 7 days drop out. The browser puts build #N on build site #N, so nothing ever moves. The 19:17 UTC "Built today" Reel flies to each one and names who asked first.
+
+```bash
+# list builds and open requests
+curl -s -X POST https://kinsburg.com/admin/builds -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{}'
+# build today's favourites now instead of waiting for 12:00 UTC
+curl -s -X POST https://kinsburg.com/admin/builds -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"run":true}'
+# hide a build (its site stays reserved, nothing moves)
+curl -s -X POST https://kinsburg.com/admin/builds -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"remove":12}'
+```
+
+The caption invites ideas in the comments but never asks for likes: Instagram demotes "like to vote" posts.
+
+## Bestie neighbours
+
+"MOVE IN @friend" moves the commenter in and holds the next plot for the friend for 7 days (the map shows "Saved for a bestie", without the name). When the friend comments MOVE IN themselves, they move in next door and both houses show each other as besties. A friend is never added without asking. If nobody claims a hold, the lot stays empty: addresses never move. Two people who already live here become besties with "MOVE IN @friend" too, without a hold.
+
+## Promos and sponsors email
+
+hello@kinsburg.com forwards to info.jadenn@gmail.com through Cloudflare Email Routing (free). It's in the bio and on the site.

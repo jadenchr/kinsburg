@@ -32,7 +32,8 @@
 //   --chrome <path>       Chrome executable (env CHROME_PATH). Default: Playwright's channel 'chrome'
 //
 // Output: out/reel-YYYY-MM-DD.mp4, out/reel-YYYY-MM-DD.jpg (cover), out/caption.txt,
-//         out/reel-YYYY-MM-DD.json (manifest for publish.mjs)
+//         out/reel-YYYY-MM-DD.json (manifest for publish.mjs); with --slot evening: reel-YYYY-MM-DD-evening.*
+//   --series built-today  today's comment-requested builds (falls back to resident-of-the-day)
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, extname, relative } from 'node:path';
@@ -40,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { parseArgs, run, sleep, probe, rgba, strHash, ambientArgs } from './lib.mjs';
 import { SERIES, buildCaption, seriesForDate, recentHeroes } from './series.mjs';
+import { BUILD_BY_KIND } from '../../shared/builds.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = parseArgs();
@@ -54,6 +56,8 @@ const FOCUS = opt('focus', null, '');
 const DAY = opt('day', null, '');
 // no --series: rotate through the week (scripts/reel/series.mjs seriesForDate)
 const SERIES_CHOSEN = opt('series', 'REEL_SERIES', null);
+// --slot evening: a second Reel the same day gets its own files (reel-DATE-evening.*)
+const SLOT = (opt('slot', 'REEL_SLOT', '') || '').replace(/[^a-z0-9-]/gi, '').toLowerCase();
 const DATE = opt('date', null, new Date().toISOString().slice(0, 10));
 const OUT = resolve(ROOT, opt('out', null, 'out'));
 const FFMPEG = opt('ffmpeg', 'FFMPEG', 'ffmpeg');
@@ -70,7 +74,8 @@ const PORT = Number(opt('port', null, '4180'));
 const CHROME = opt('chrome', 'CHROME_PATH', '');
 let BASE = opt('url', 'KINSBURG_URL', '');
 
-const SERIES_ID = SERIES_CHOSEN ?? seriesForDate(DATE);
+let SERIES_ID = SERIES_CHOSEN ?? seriesForDate(DATE);
+const STEM = `reel-${DATE}${SLOT ? `-${SLOT}` : ''}`;
 if (!SERIES[SERIES_ID]) {
   console.error(`Unknown --series "${SERIES_ID}". Known: ${Object.keys(SERIES).join(', ')}`);
   process.exit(2);
@@ -212,6 +217,22 @@ async function loadSim(base) {
   return null;
 }
 
+/** Today's builds from town.json (the built-today series flies to them). */
+async function loadBuilds(base) {
+  const urls = BASE ? [`${base}/api/city/town.json`, `${base}/town.json`] : [`${base}/town.json`];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) continue;
+      const t = await r.json();
+      if (Array.isArray(t?.builds)) return t.builds.filter((b) => b.day === t.day);
+    } catch {
+      /* no town data */
+    }
+  }
+  return [];
+}
+
 async function main() {
   const t0 = Date.now();
   mkdirSync(OUT, { recursive: true });
@@ -225,9 +246,16 @@ async function main() {
   log(sim ? `town data: ${heroes.length} resolved incident(s) in the last 26 h, ${sim.open?.length ?? 0} open` : 'town data: none (no hero shout-outs)');
   // the plain "Day N" series flies to the latest rescued house when no --focus is given
   const heroFocus = !FOCUS && SERIES_ID === 'day' ? heroes.find((i) => i.target)?.target ?? '' : '';
+  // built-today flies to each of today's builds; with nothing built it becomes resident-of-the-day
+  const todaysBuilds = SERIES_ID === 'built-today' ? await loadBuilds(base) : [];
+  if (SERIES_ID === 'built-today' && !todaysBuilds.length) {
+    log('nothing was built today: recording resident-of-the-day instead');
+    SERIES_ID = 'resident-of-the-day';
+  }
+  const buildFocus = todaysBuilds.slice(0, 4).map((b) => `build:${b.id}`).join(',');
   const q = new URLSearchParams({ reel: '1', duration: String(DUR), fps: String(FPS), w: String(W), h: String(H) });
   if (HOUR) q.set('hour', HOUR);
-  if (FOCUS || heroFocus) q.set('focus', FOCUS || heroFocus);
+  if (FOCUS || buildFocus || heroFocus) q.set('focus', FOCUS || buildFocus || heroFocus);
   if (DAY) q.set('day', DAY);
   const pageUrl = `${base}/?${q}`;
 
@@ -264,7 +292,8 @@ async function main() {
 
   // ── text: overlay + caption ──
   const names = args.names === false ? [] : stats.newResidents.map((r) => r.handle);
-  const cs = { day: stats.day, residents: stats.residents, newToday: stats.newToday, names, street: stats.newestStreet, city: stats.city, newest: args.names === false ? null : stats.newResidents[0] ?? null };
+  const cs = { day: stats.day, residents: stats.residents, newToday: stats.newToday, names, street: stats.newestStreet, city: stats.city, newest: args.names === false ? null : stats.newResidents[0] ?? null,
+    builds: todaysBuilds.map((b) => ({ label: BUILD_BY_KIND[b.kind]?.label ?? b.kind, emoji: BUILD_BY_KIND[b.kind]?.emoji ?? '', by: b.by })) };
   const fill = (tpl) =>
     tpl
       .replaceAll('{day}', String(cs.day))
@@ -283,7 +312,7 @@ async function main() {
   log('audio:', audio.kind);
 
   // ── encode: frames on stdin + overlay + audio → H.264/AAC MP4 with +faststart ──
-  const mp4 = join(OUT, `reel-${DATE}.mp4`);
+  const mp4 = join(OUT, `${STEM}.mp4`);
   const fadeOut = Math.max(0, DUR - 1.5).toFixed(3);
   const ff = spawn(
     FFMPEG,
@@ -347,7 +376,7 @@ async function main() {
   if (pageErrors.length) log('page reported errors:\n  ' + pageErrors.join('\n  '));
 
   // ── cover: the last second (town hall at night, title on) ──
-  const cover = join(OUT, `reel-${DATE}.jpg`);
+  const cover = join(OUT, `${STEM}.jpg`);
   await run(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(Math.max(0, DUR - 0.75)), '-i', mp4, '-frames:v', '1', '-q:v', '2', cover]);
 
   writeFileSync(join(OUT, 'caption.txt'), caption + '\n');
@@ -366,7 +395,7 @@ async function main() {
     probe: info,
     timing: { frames, renderSeconds: Math.round(renderSec * 10) / 10, secondsPerFrame: Math.round((renderSec / frames) * 1000) / 1000, worstFrameMs: worst, totalSeconds: Math.round((Date.now() - t0) / 100) / 10 },
   };
-  writeFileSync(join(OUT, `reel-${DATE}.json`), JSON.stringify(manifest, null, 2) + '\n');
+  writeFileSync(join(OUT, `${STEM}.json`), JSON.stringify(manifest, null, 2) + '\n');
 
   log(`done in ${manifest.timing.totalSeconds} s (${manifest.timing.secondsPerFrame} s/frame, worst ${worst} ms)`);
   log('video  ', manifest.video, info.ok ? '✓ Instagram specs' : '✗ CHECK SPECS', JSON.stringify(info));

@@ -34,6 +34,8 @@ const VARS = {
   STRIPE_PERKS: JSON.stringify({ plink_star: 'star', plink_gold: 'goldRoof', plink_poster: 'poster', plink_owl: 'pet:owl' }),
   IG_DM_ENABLED: 'true',
   SIM_RANDOM_INCIDENTS: 'false',
+  IG_REPLY_ENABLED: 'true', // production keeps routine replies off; the tests still exercise the pacing and pause
+  BUILD_HOUR_UTC: '24', // never build on the cron during tests: /admin/builds { run } builds on demand
 };
 
 let failures = 0;
@@ -166,6 +168,7 @@ async function waitFor(url, ms = 60_000) {
 const state = mkdtempSync(join(tmpdir(), 'kinsburg-e2e-'));
 const devVars = join(root, '.dev.vars');
 let wrangler;
+let wlog = '';
 try {
   console.log('building site…');
   execFileSync('npx', ['vite', 'build'], { cwd: root, stdio: 'ignore' });
@@ -179,7 +182,6 @@ try {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, CI: '1' },
   });
-  let wlog = '';
   wrangler.stdout.on('data', (d) => (wlog += d));
   wrangler.stderr.on('data', (d) => (wlog += d));
   wrangler.on('exit', (c) => c && console.log('wrangler exited', c, '\n' + wlog.slice(-2000)));
@@ -235,6 +237,9 @@ try {
   ok(replyHits.length === 2, 'no reply attempts while paused (the second poll stayed quiet)', replyHits.length);
   r = await admin('/admin/replies', { max: 5 });
   ok(replyHits.length === 2 && (await r.json()).missed.replied === 0, 'the admin catch-up also respects the pause', replyHits.length);
+  r = await admin('/admin/reply', { commentId: '1234567', message: 'Welcome!' });
+  ok(/paused/.test((await r.json()).error ?? '') && replyHits.length === 2, 'a hand-picked reply also waits out the pause');
+
 
   console.log('\ntown: votes, mayor, growing houses');
   let town = await (await fetch(`${BASE}/api/city/town.json`)).json();
@@ -453,12 +458,54 @@ try {
   ok(r.status === 401, 'relay needs the admin token', r.status);
   rmSync(pubDir, { recursive: true, force: true });
 
+  console.log('\nbuild what you ask + bestie neighbours');
+  const POLL = `${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`;
+  const pop0 = (await loadCity()).data.residents.length;
+  COMMENTS.m2[0].push(
+    { id: 'b1', text: 'build a pool please', username: 'lurker', like_count: 5 },
+    { id: 'b2', text: 'can we get a ferris wheel', username: 'third_person', like_count: 9 },
+    { id: 'b3', text: 'pool pls 🏊', username: 'second.person', like_count: 3 },
+    { id: 'b4', text: 'no more pools', username: 'grumpy', like_count: 50 },
+    { id: 'f1', text: 'MOVE IN @Bestie.One', username: 'friend_a' },
+    { id: 'f2', text: 'MOVE IN @third_person', username: 'new_person1' }, // both already live here
+  );
+  await fetch(POLL);
+  let t = await (await fetch(`${BASE}/api/city/town.json`)).json();
+  const reqOf = (k) => t.requests?.find((x) => x.kind === k);
+  ok(reqOf('pool')?.likes === 8 && reqOf('pool')?.count === 2 && reqOf('ferris')?.likes === 9, 'build requests are counted with their likes', t.requests);
+  ok(!t.requests?.some((x) => x.likes >= 50), '"no more pools" is not a request');
+  ({ data } = await loadCity());
+  const fa = data.residents.find((x) => x.id === 'friend_a');
+  ok(data.residents.length === pop0 + 2 && fa, 'MOVE IN @friend moves the commenter in and holds one plot', data.residents.length - pop0);
+  ok(t.holds?.length === 1 && t.holds[0].number === fa.number + 1, 'the held plot is the one right after the commenter', t.holds);
+  ok(data.residents.some((x) => x.id === `vacant.lot.${fa.number + 1}`) && !data.residents.some((x) => x.id === 'bestie.one'), 'the friend is not added until they ask; the plot shows as held');
+  ok(t.besties?.some(([a, b]) => a === 'new_person1' && b === 'third_person'), 'two existing residents become besties without a hold', t.besties);
+
+  r = await admin('/admin/builds', { run: true });
+  j = await r.json();
+  ok(j.run?.built?.join() === 'ferris,pool', 'the most-liked requests get built, most likes first', j.run);
+  ok(j.builds?.find((x) => x.kind === 'pool')?.by === 'lurker' && j.builds?.find((x) => x.kind === 'ferris')?.likes === 9, 'each build credits the most-liked asker', j.builds);
+  j = await (await admin('/admin/builds', { run: true })).json();
+  ok(j.run?.built?.length === 0 && j.builds.length === 2, 'built requests are not built twice', j.run);
+
+  COMMENTS.m2[0].push({ id: 'f3', text: 'MOVE IN', username: 'bestie.one' });
+  await fetch(POLL);
+  ({ data } = await loadCity());
+  t = await (await fetch(`${BASE}/api/city/town.json`)).json();
+  ok(data.residents.find((x) => x.id === 'bestie.one')?.number === fa.number + 1 && data.residents.length === pop0 + 2, 'the friend moves into the held plot next door', { friend: data.residents.find((x) => x.id === 'bestie.one')?.number, expected: fa.number + 1, residents: data.residents.length, wanted: pop0 + 2 });
+  ok(!t.holds?.length && t.besties?.some(([a, b]) => a === 'bestie.one' && b === 'friend_a'), 'they are besties and the hold is gone', { holds: t.holds, besties: t.besties });
+  try { validateCityData(data); ok(true, 'city still valid with holds and builds'); } catch (e) { ok(false, 'city still valid with holds and builds', String(e)); }
+
   const st = await (await admin('/admin/stats')).json();
   console.log(`\nfinal: ${st.residents} residents, processed comments ${JSON.stringify(st.processedComments)}, stripe ${JSON.stringify(st.stripeEvents)}`);
 } catch (err) {
   failures++;
   console.error('ERROR', err);
 } finally {
+  if (failures) {
+    const errs = wlog.split('\n').filter((l) => /failed|error|Error/.test(l)).slice(-15);
+    if (errs.length) console.log('\nworker log (errors):\n' + errs.join('\n'));
+  }
   wrangler?.kill('SIGINT');
   mock.close();
   rmSync(devVars, { force: true });

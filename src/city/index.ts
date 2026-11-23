@@ -13,13 +13,13 @@
 // • Reel mode (enterReel, used only behind ?reel=1) turns the loop off and renders
 //   complete frames on demand: no time budget, every visible chunk built, all motion
 //   driven by the reel's own clock.
-import type { Billboard, BuildingRef, CreateCityView, ReelControl, ReelFrame, ReelTarget } from './api';
-import type { Resident } from '../types';
+import type { Billboard, BuildInfo, BuildingRef, CreateCityView, Hold, ReelControl, ReelFrame, ReelTarget, SecretRef } from './api';
+import type { CityData, Resident } from '../types';
 import { COLORS, FONTS, alpha, mix, type SkyState } from '../theme';
 import { Camera, attachInput } from './camera';
 import { drawGround, eachTile, makeLook, type Look, type Region } from './ground';
 import { HH, HW, hash } from './iso';
-import { buildModel, type Model, type Obj } from './model';
+import { buildModel, type Extras, type Model, type Obj } from './model';
 import { drawAnimated, drawEntry, projFor } from './objects';
 import { drawRing } from './house';
 import { createSimOverlay } from './sim-overlay';
@@ -67,6 +67,13 @@ export const createCityView: CreateCityView = (canvas) => {
   let dpr = 1;
   let selectCb: (r: Resident | null) => void = () => {};
   let buildingCb: (b: BuildingRef) => void = () => {};
+  let cityData: CityData | null = null;
+  let extras: Extras = { builds: [], holds: [] };
+  let besties: [string, string][] = [];
+  let found = new Set<number>();
+  let buildCb: (b: BuildInfo) => void = () => {};
+  let secretCb: (s: SecretRef) => void = () => {};
+  let holdCb: (h: Hold) => void = () => {};
   let highlight = -1;
   let highlightT0 = 0;
   let pendingFocus: string | null = null;
@@ -361,6 +368,7 @@ export const createCityView: CreateCityView = (canvas) => {
       drawAnimated(ctx, o, sky, t, S);
     }
     drawBillboard(t);
+    drawExtrasOverlay(t, S, v);
     {
       // what stands in front of a sprite on tile (tx, ty) is repainted over it, inside a clip box
       const sdetail = Math.max(1, detailFor(S));
@@ -378,6 +386,66 @@ export const createCityView: CreateCityView = (canvas) => {
       });
     }
     for (const i of rings) drawHighlight(m.objs[i], ringMs, S);
+  }
+
+  /** Sparkles on found secrets, hearts between besties. */
+  function drawExtrasOverlay(t: number, S: number, v: { minX: number; maxX: number; minY: number; maxY: number }) {
+    const m = model;
+    if (!m || !sky) return;
+    if (found.size && S >= 0.5) {
+      for (const idx of found) {
+        const oi = m.bySecret.get(idx);
+        if (oi === undefined) continue;
+        const o = m.objs[oi];
+        const p = projFor(o);
+        if (p.cx < v.minX - 40 || p.cx > v.maxX + 40 || p.cy < v.minY - 60 || p.cy > v.maxY + 60) continue;
+        const ph = reduced() ? 0.5 : (Math.sin(t * 0.004 + idx) + 1) / 2;
+        ctx.save();
+        ctx.translate(p.cx + 8, p.cy - 26 - ph * 3);
+        ctx.fillStyle = alpha(COLORS.gold, 0.5 + 0.45 * ph);
+        const r = 3 + ph * 2;
+        ctx.beginPath();
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2, rr = k % 2 ? r * 0.35 : r;
+          ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    if (besties.length && S >= 0.7) {
+      for (const [a, b] of besties) {
+        const ia = m.byResident.get(a), ib = m.byResident.get(b);
+        if (ia === undefined || ib === undefined) continue;
+        const A = m.objs[ia], B = m.objs[ib];
+        const pa = projFor(A), pb = projFor(B);
+        const mx = (pa.cx + pb.cx) / 2, my = (pa.cy + pb.cy) / 2 - Math.max(A.height, B.height) * 0.7;
+        if (mx < v.minX - 80 || mx > v.maxX + 80 || my < v.minY - 80 || my > v.maxY + 80) continue;
+        if (Math.hypot(pa.cx - pb.cx, (pa.cy - pb.cy) * 2) > 64 * 6) continue;
+        const bob = reduced() ? 0 : Math.sin(t * 0.003) * 2;
+        ctx.save();
+        ctx.strokeStyle = alpha(COLORS.gold, 0.55);
+        ctx.lineWidth = Math.max(1, 1.2 / S);
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pa.cx, pa.cy - A.height * 0.6);
+        ctx.quadraticCurveTo(mx, my - 10, pb.cx, pb.cy - B.height * 0.6);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.translate(mx, my - 4 + bob);
+        ctx.fillStyle = COLORS.gold;
+        ctx.strokeStyle = alpha(COLORS.ink, 0.5);
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(0, 4);
+        ctx.bezierCurveTo(-8, -1, -4.5, -7, 0, -3);
+        ctx.bezierCurveTo(4.5, -7, 8, -1, 0, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
   }
 
   /** Sponsor billboard in the open south-west corner of the town square (the police station stands
@@ -535,7 +603,7 @@ export const createCityView: CreateCityView = (canvas) => {
 
   function hitObj(o: Obj, wx: number, wy: number): boolean {
     // Hit the main mass only: spires, flags and blades shouldn't steal taps from the homes behind.
-    const h = o.kind === 'lot' ? 4 : o.kind === 'landmark' ? Math.min(o.height, HIT_MASS[o.landmark!.kind]) : o.kind === 'civic' ? 44 : o.height - 6;
+    const h = o.kind === 'lot' ? (o.hold ? 30 : 4) : o.kind === 'build' ? Math.min(o.height, 64) : o.kind === 'secret' ? 14 : o.kind === 'landmark' ? Math.min(o.height, HIT_MASS[o.landmark!.kind]) : o.kind === 'civic' ? 44 : o.height - 6;
     const L = [(o.x - o.y - o.h) * HW, (o.x + o.y + o.h) * HH];
     const T = [(o.x - o.y) * HW, (o.x + o.y) * HH];
     const R = [(o.x + o.w - o.y) * HW, (o.x + o.w + o.y) * HH];
@@ -553,6 +621,9 @@ export const createCityView: CreateCityView = (canvas) => {
   let detachInput = attachInput(canvas, cam, {
     tap(sx, sy) {
       const o = pick(sx, sy);
+      if (o?.kind === 'build' && o.build) return buildCb(o.build);
+      if (o?.kind === 'secret' && o.secret) return secretCb({ index: o.secret.index, name: o.secret.name });
+      if (o?.kind === 'lot' && o.hold) return holdCb(o.hold);
       const b = o && !o.resident ? buildingOf(o) : null;
       if (b) buildingCb(b);
       else selectCb(o?.resident ?? null);
@@ -602,7 +673,8 @@ export const createCityView: CreateCityView = (canvas) => {
   const api: ReturnType<CreateCityView> = {
     setData(data) {
       dropAllChunks();
-      model = buildModel(data);
+      cityData = data;
+      model = buildModel(data, extras);
       sim.setModel(model);
       highlight = -1;
       mode = -1;
@@ -631,6 +703,58 @@ export const createCityView: CreateCityView = (canvas) => {
       dirty = true;
     },
     focusResident: focus,
+    setExtras(builds, holds) {
+      const key = (e: Extras) => e.builds.map((b) => `${b.id}:${b.kind}`).join() + '|' + e.holds.map((h) => h.number).join();
+      const next: Extras = { builds: [...builds], holds: [...holds] };
+      const relayout = key(next) !== key(extras);
+      extras = next;
+      if (!cityData || !model) return;
+      if (relayout) {
+        dropAllChunks();
+        model = buildModel(cityData, extras);
+        sim.setModel(model);
+        highlight = -1;
+      } else {
+        // likes and days left changed: update the cards, nothing to repaint
+        for (const b of extras.builds) {
+          const oi = model.byBuild.get(b.id);
+          if (oi !== undefined) model.objs[oi].build = b;
+        }
+        for (const h of extras.holds) {
+          const oi = model.byHold.get(h.number);
+          if (oi !== undefined) model.objs[oi].hold = h;
+        }
+      }
+      dirty = true;
+    },
+    setBesties(pairs) {
+      besties = pairs.map(([a, b]) => [a.toLowerCase(), b.toLowerCase()]);
+      dirty = true;
+    },
+    setSecretsFound(list) {
+      found = new Set(list);
+      dirty = true;
+    },
+    onBuild(cb) {
+      buildCb = cb;
+    },
+    onSecret(cb) {
+      secretCb = cb;
+    },
+    onHold(cb) {
+      holdCb = cb;
+    },
+    focusBuild(id) {
+      const oi = model?.byBuild.get(id);
+      if (oi === undefined || !model) return;
+      const o = model.objs[oi];
+      const p = projFor(o);
+      const z = cam.zoom < 1.6 ? 1.6 : cam.zoom;
+      cam.flyTo(p.cx, p.cy - o.height * 0.4, cam.vw / 2, cam.vh * 0.4, z, reduced() ? 0 : 700, performance.now());
+      highlight = oi;
+      highlightT0 = performance.now();
+      dirty = true;
+    },
     setBillboards(lines) {
       billboards = lines.slice(0, 4);
       dirty = true;
@@ -731,6 +855,20 @@ export const createCityView: CreateCityView = (canvas) => {
         const o = model?.objs.find((x) => x.landmark?.kind === kind);
         return o ? targetOf(o) : null;
       },
+      build(id) {
+        if (!model) return null;
+        const k = id === 'latest' ? Math.max(-1, ...model.byBuild.keys()) : id;
+        const oi = model.byBuild.get(k);
+        return oi === undefined ? null : targetOf(model.objs[oi]);
+      },
+      secret(index) {
+        const oi = model?.bySecret.get(index);
+        return oi === undefined ? null : targetOf(model!.objs[oi]);
+      },
+      hold(number) {
+        const oi = model?.byHold.get(number);
+        return oi === undefined ? null : targetOf(model!.objs[oi]);
+      },
       homesBounds() {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const o of model?.objs ?? []) {
@@ -754,7 +892,9 @@ export const createCityView: CreateCityView = (canvas) => {
         const rings: number[] = [];
         for (const id of f.highlights) {
           // 'lot:<resident>' rings the empty plot nearest that resident (the next house to come)
-          const oi = id === 'next' ? nextLot() : id.startsWith('lot:') ? nearestLot(id.slice(4)) : model.byResident.get(id);
+          const oi = id.startsWith('build:') ? model.byBuild.get(id === 'build:latest' ? Math.max(-1, ...model.byBuild.keys()) : Number(id.slice(6)))
+            : id.startsWith('hold:') ? model.byHold.get(Number(id.slice(5)))
+            : id === 'next' ? nextLot() : id.startsWith('lot:') ? nearestLot(id.slice(4)) : model.byResident.get(id);
           if (oi !== undefined) rings.push(oi);
         }
         render(f.t * 1000, true, rings, f.t * 1000);

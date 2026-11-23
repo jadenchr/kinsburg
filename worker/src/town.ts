@@ -2,6 +2,7 @@
 // the mayor, sponsors, perk links and DM joins (with the follower badge).
 //
 // Following @kinsburgtown is encouraged, never required: a house never depends on it.
+import { getBuildsPublic } from './builds';
 import { LEVEL_AT, levelFor } from '../../shared/residents-format.mjs';
 import type { Row } from '../../shared/residents-format.mjs';
 import { RESIDENT_COLS, checkHandle, eventStmt, joinMany, toRow, writeSnapshots } from './city';
@@ -297,6 +298,7 @@ export async function getTown(env: Env) {
     env.DB.prepare('SELECT name, message, url FROM sponsors WHERE starts_at <= ?1 AND ends_at > ?1 ORDER BY id DESC LIMIT 4').bind(now).all<{ name: string; message: string; url: string | null }>(),
     getSim(env),
   ]);
+  const builds = await getBuildsPublic(env);
   const withCounts = await Promise.all(polls.results.map(async (p) => publicPoll(p, await tally(env, p.id))));
   return {
     day: cityDay(env),
@@ -307,6 +309,7 @@ export async function getTown(env: Env) {
     levelAt: LEVEL_AT,
     account: env.CITY_ACCOUNT,
     sim,
+    ...builds,
   };
 }
 

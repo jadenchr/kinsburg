@@ -24,6 +24,10 @@ export interface Env {
   SIM_RANDOM_INCIDENTS?: string;
   IG_REPLY_MAX_PER_RUN: string;
   IG_REPLY_MAX_PER_DAY?: string;
+  /** UTC hour after which the day's most-liked build requests are built (default 12). */
+  BUILD_HOUR_UTC?: string;
+  /** Builds per day (default BUILDS_PER_DAY in shared/builds.mjs). */
+  BUILDS_PER_DAY?: string;
   /** "true" after App Review: join / move out by DM, with the follower badge */
   IG_DM_ENABLED?: string;
   /** "true" after App Review: one private reply to each commenter who moves in */

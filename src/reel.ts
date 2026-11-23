@@ -18,6 +18,7 @@
 //   window.kinsburgReel = { ready, duration, fps, width, height, stats, colors,
 //                           renderFrame(t), captureFrame(t, type?, quality?) }
 import type { CityData, Resident } from './types';
+import type { TownInfo } from './data/town';
 import type { CityView, ReelCamera, ReelControl, ReelTarget } from './city/api';
 import { COLORS, FONTS, alpha, skyAt, type SkyState } from './theme';
 import { renderShareCard } from './ui/share';
@@ -32,6 +33,8 @@ export interface ReelStats {
   newToday: number;
   /** today's newest residents, newest first (at most 12) */
   newResidents: { handle: string; job: string; street: string | null; number: number }[];
+  /** what the city built today (build ids, to use as `build:<id>` targets), newest last */
+  builds: { id: number; kind: string; by: string; likes: number }[];
   /** resident ids the camera visits */
   focus: string[];
   /** focus handles from the URL that aren't residents */
@@ -77,6 +80,16 @@ const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeInOut = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 const normalise = (q: string) => q.trim().replace(/^@+/, '').toLowerCase();
+
+/** Targets for things that aren't residents: build:<id>, build:latest, hold:<resident number>, secret:<0-based>. */
+const SPEC = /^(build:(latest|\d+)|hold:\d+|secret:\d+)$/;
+function specTarget(rc: ReelControl, spec: string): ReelTarget | null {
+  const [kind, arg] = spec.split(':');
+  if (kind === 'build') return rc.build(arg === 'latest' ? 'latest' : Number(arg));
+  if (kind === 'hold') return rc.hold(Number(arg));
+  if (kind === 'secret') return rc.secret(Number(arg));
+  return null;
+}
 
 function cityDay(data: CityData, now: Date): number {
   const start = new Date(data.foundedISO + 'T00:00:00');
@@ -370,7 +383,7 @@ function drawPosterMarks(canvas: HTMLCanvasElement, cam: ReelCamera, targets: Re
 }
 
 // ── entry point (called from main.ts only when ?reel is present) ────────────
-export function startReel(city: CityView, data: CityData, params: URLSearchParams): void {
+export function startReel(city: CityView, data: CityData, params: URLSearchParams, town?: TownInfo | null): void {
   // posters are print size (e.g. 3600×4800 = 12×16 in at 300 dpi)
   const W = Math.round(num(params.get('w'), 1080, 16, 8192));
   const H = Math.round(num(params.get('h'), 1920, 16, 8192));
@@ -398,7 +411,9 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
   const today = data.residents.filter((r) => r.joinedDay === day).sort((a, b) => b.number - a.number);
   const byId = new Map(data.residents.map((r) => [r.id, r]));
   const asked = (params.get('focus') ?? '').split(',').map(normalise).filter(Boolean);
-  const focusIds = asked.length ? asked.filter((id) => byId.has(id) && rc.resident(id)) : today.slice(0, 3).map((r) => r.id);
+  // a focus entry is a resident handle or any spec resolveTarget knows (build:12, build:latest, hold:7, secret:0)
+  const resolves = (id: string) => (byId.has(id) && !!rc.resident(id)) || (SPEC.test(id) && !!specTarget(rc, id));
+  const focusIds = asked.length ? asked.filter(resolves) : today.slice(0, 3).map((r) => r.id);
   const newest = data.residents.reduce<Resident | null>((m, r) => (!m || r.number > m.number ? r : m), null);
 
   const stats: ReelStats = {
@@ -408,20 +423,22 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
     residents: data.residents.length,
     newToday: today.length,
     newResidents: today.slice(0, 12).map((r) => ({ handle: r.handle, job: r.job, street: streetOf(r), number: r.number })),
+    builds: (town?.builds ?? []).filter((b) => b.day === (town?.day ?? day)).map((b) => ({ id: b.id, kind: b.kind, by: b.by, likes: b.likes })),
     focus: focusIds.slice(0, 6),
-    missingFocus: asked.filter((id) => !byId.has(id)),
+    missingFocus: asked.filter((id) => !resolves(id)),
     newestStreet: newest ? streetOf(newest) : null,
     demo: data.demo,
     hourFrom,
     hourTo,
   };
 
-  const focusTargets = stats.focus.map((id) => rc.resident(id)).filter((p): p is ReelTarget => !!p);
+  const focusTargets = stats.focus.map((id) => (SPEC.test(id) ? specTarget(rc, id) : rc.resident(id))).filter((p): p is ReelTarget => !!p);
   // ?shot=… : one scripted shot for the launch reels (scripts/reel/launch.mjs)
   const shotKind = params.get('shot');
   const shotTargetId = normalise(params.get('target') ?? '');
   const shotTarget = !shotKind ? null
     : shotTargetId.startsWith('landmark:') ? rc.landmark(shotTargetId.slice(9))
+    : SPEC.test(shotTargetId) ? specTarget(rc, shotTargetId)
     : params.has('lot') ? rc.emptyLotNear(shotTargetId)
     : rc.resident(shotTargetId);
   const darkIds = (params.get('dark') ?? '').split(',').map(normalise).filter(Boolean);
@@ -447,6 +464,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
     if (id === 'next') return rc.nextLot();
     if (id.startsWith('landmark:')) return rc.landmark(id.slice(9));
     if (id.startsWith('lot:')) return rc.emptyLotNear(id.slice(4));
+    if (SPEC.test(id)) return specTarget(rc, id);
     return rc.resident(id);
   };
   const wideCam = (): ReelCamera => {

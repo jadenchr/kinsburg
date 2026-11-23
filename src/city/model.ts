@@ -3,6 +3,9 @@
 import { TILE, type CityData, type Landmark, type Plot, type Resident } from '../types';
 import { houseTop } from './house';
 import { HW, HH, hash } from './iso';
+import { computeSites, type SecretSpot } from './sites';
+import type { BuildInfo, Hold } from './api';
+import { BUILD_HEIGHT } from './builds';
 
 export const T_GRASS = 0;
 export const T_ROAD = 1;
@@ -25,7 +28,7 @@ const CODE: Record<string, number> = {
   [TILE.sand]: T_SAND,
 };
 
-export type ObjKind = 'house' | 'lot' | 'shop' | 'civic' | 'landmark' | 'trees' | 'bush' | 'lamp';
+export type ObjKind = 'house' | 'lot' | 'shop' | 'civic' | 'landmark' | 'trees' | 'bush' | 'lamp' | 'build' | 'secret';
 
 export interface Obj {
   kind: ObjKind;
@@ -43,6 +46,12 @@ export interface Obj {
   plot?: Plot;
   resident?: Resident;
   landmark?: Landmark;
+  /** a request the city built (kind 'build') */
+  build?: BuildInfo;
+  /** a hidden spot (kind 'secret') */
+  secret?: SecretSpot;
+  /** an empty lot kept for a bestie (kind 'lot'): the resident number it is held under */
+  hold?: Hold;
   /** lamp: which side of the road the post stands on */
   lampU?: number;
   lampV?: number;
@@ -84,11 +93,25 @@ export interface Model {
   byResident: Map<string, number>;
   residents: Map<string, Resident>;
   townhall: Landmark | undefined;
+  /** index into objs of each build, by build id */
+  byBuild: Map<number, number>;
+  /** index into objs of each secret, by secret index */
+  bySecret: Map<number, number>;
+  /** index into objs of each held lot, by resident number */
+  byHold: Map<number, number>;
   /** tallest thing, world px — how far below the screen we must look for content */
   maxHeight: number;
 }
 
-export function buildModel(data: CityData): Model {
+/** Things added to the city over time (builds, holds). Empty is fine. */
+export interface Extras {
+  builds: BuildInfo[];
+  holds: Hold[];
+}
+
+export const isVacant = (r: Resident) => r.handle.startsWith('vacant.lot.');
+
+export function buildModel(data: CityData, extras: Extras = { builds: [], holds: [] }): Model {
   const W = data.width;
   const H = data.height;
   const N = W * H;
@@ -138,14 +161,41 @@ export function buildModel(data: CityData): Model {
   for (const lm of data.landmarks) {
     add({ kind: 'landmark', x: lm.x, y: lm.y, w: lm.w, h: lm.h, seed: hash(lm.x, lm.y, 3) * 1e6, height: LANDMARK_HEIGHT[lm.kind], reach: lm.kind === 'windmill' ? 60 : 8, landmark: lm }, true);
   }
+  const holdByNumber = new Map<number, Hold>(extras.holds.map((h) => [h.number, h]));
+  const byHold = new Map<number, number>();
   for (const pl of data.plots) {
-    const res = pl.residentId ? residents.get(pl.residentId) : undefined;
+    let res = pl.residentId ? residents.get(pl.residentId) : undefined;
+    // a vacant lot (someone left, or a plot held for a bestie) is a lot, not a house
+    let hold: Hold | undefined;
+    if (res && isVacant(res)) {
+      hold = holdByNumber.get(res.number);
+      res = undefined;
+    }
     const seed = (pl.id * 2654435761) >>> 0;
     if (pl.kind === 'house') {
       if (res) add({ kind: 'house', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: houseTop(res.houseStyle, res.perks, res.level) * 64 + 6, reach: 0, plot: pl, resident: res }, true);
-      else add({ kind: 'lot', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: 10, reach: 0, plot: pl }, true);
+      else {
+        const li = add({ kind: 'lot', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: hold ? 30 : 10, reach: hold ? 6 : 0, plot: pl, hold }, true);
+        if (hold) byHold.set(hold.number, li);
+      }
     } else {
       add({ kind: pl.kind, x: pl.x, y: pl.y, w: pl.w, h: pl.h, seed, height: pl.kind === 'civic' ? 72 : 46, reach: 4, plot: pl, resident: res }, true);
+    }
+  }
+
+  // things the city built, and the hidden spots, on their fixed sites (before trees, so they clear the ground)
+  const byBuild = new Map<number, number>();
+  const bySecret = new Map<number, number>();
+  {
+    const sites = computeSites(data);
+    for (const b of [...extras.builds].sort((a, z) => a.id - z.id)) {
+      const site = sites.builds[b.id - 1];
+      if (!site || byBuild.has(b.id) || occ[site.y * W + site.x] >= 0) continue;
+      byBuild.set(b.id, add({ kind: 'build', x: site.x, y: site.y, w: 1, h: 1, seed: (b.id * 2654435761) >>> 0, height: BUILD_HEIGHT[b.kind] ?? 60, reach: 40, build: b }, true));
+    }
+    for (const s of sites.secrets) {
+      if (occ[s.y * W + s.x] >= 0) continue;
+      bySecret.set(s.index, add({ kind: 'secret', x: s.x, y: s.y, w: 1, h: 1, seed: (s.index * 40503 + 7) >>> 0, height: 18, reach: 6, secret: s }, true));
     }
   }
 
@@ -247,7 +297,7 @@ export function buildModel(data: CityData): Model {
     data, W, H, tile, jit, road, occ, objs, entryStart, entryList,
     lamps: Int32Array.from(lampList),
     shimmer: Int32Array.from(shimmer),
-    animated, byResident, residents,
+    animated, byResident, residents, byBuild, bySecret, byHold,
     townhall: data.landmarks.find((l) => l.kind === 'townhall'),
     maxHeight,
   };

@@ -17,6 +17,7 @@ import { simTick } from './sim';
 import { handleStripeWebhook } from './stripe';
 import { serveMedia } from './media';
 import { getTown } from './town';
+import { lapseHolds, runDailyBuilds } from './builds';
 
 const SHORT = 'public, max-age=60';
 const IMMUTABLE = 'public, max-age=31536000, immutable';
@@ -106,6 +107,15 @@ export default {
       else await pollComments(env);
     } catch (err) {
       log('cron_failed', { cron: controller.cron, error: String(err) });
+    }
+    // the day's builds and bestie holds run on the 15-minute cron, even when Instagram is unreachable
+    if (controller.cron !== '41 3 * * 1') {
+      try {
+        await runDailyBuilds(env);
+        await lapseHolds(env);
+      } catch (err) {
+        log('builds_failed', { error: String(err) });
+      }
     }
     // the city simulation steps on the 15-minute cron, even when Instagram is unreachable
     if (controller.cron !== '41 3 * * 1') {

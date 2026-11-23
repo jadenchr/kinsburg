@@ -4,6 +4,7 @@ import type { CityData, Resident } from '../types';
 import type { PerkKey, TownIncident, TownInfo, TownPoll } from '../data/town';
 import { ICONS } from './icons';
 import { addressOf } from './lookup';
+import { BUILD_BY_KIND } from '../../shared/builds.mjs';
 import { COINS, INCIDENTS, PET_COIN_PRICE } from '../../shared/sim.mjs';
 
 /** What each perk is, in the words shown to people. Cosmetic only, never power. */
@@ -38,7 +39,7 @@ const html = (s: string) => {
   return t.content;
 };
 
-export type TownSection = 'move-in' | 'status' | 'vote' | 'support';
+export type TownSection = 'move-in' | 'status' | 'vote' | 'support' | 'build';
 
 export interface TownPanel {
   readonly dialog: HTMLDialogElement;
@@ -235,6 +236,23 @@ export function createTownPanel(): TownPanel {
 
     // city status
     if (t.sim) body.append(statusSection(t, data!));
+
+    // what to build next
+    const reqs = (t.requests ?? []).filter((r) => BUILD_BY_KIND[r.kind]).slice(0, 10);
+    if (reqs.length) {
+      const list = el('ul', { class: 'kb-requests' });
+      for (const r of reqs) {
+        const def = BUILD_BY_KIND[r.kind]!;
+        const li = el('li', { class: 'kb-request' });
+        li.append(
+          el('span', { class: 'kb-request-emoji', 'aria-hidden': 'true' }, def.emoji),
+          el('span', { class: 'kb-request-name' }, def.label),
+          el('span', { class: 'kb-request-likes' }, `${r.likes.toLocaleString()} ${r.likes === 1 ? 'like' : 'likes'}`),
+        );
+        list.append(li);
+      }
+      body.append(section('build', 'What should we build next?', list, el('p', { class: 'kb-town-note' }, 'Comment what you want built. The most-liked requests get built every day.')));
+    }
 
     // jobs and pets
     const cmd = (c: string) => el('b', {}, c);

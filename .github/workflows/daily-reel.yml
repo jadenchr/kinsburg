@@ -1,6 +1,7 @@
-# Records the daily Kinsburg Reel from the live city and posts it to @kinsburgtown.
-# Runs every day at 13:17 UTC (off the top of the hour, when GitHub's scheduler is less busy),
-# or by hand from the Actions tab ("Run workflow").
+# Records the daily Kinsburg Reels from the live city and posts them to @kinsburgtown.
+# 13:17 UTC: the rotating daily series. 19:17 UTC: "Built today", the things built that day from
+# comment requests (falls back to resident-of-the-day when nothing was built). Off the top of the
+# hour, when GitHub's scheduler is less busy. Or by hand from the Actions tab ("Run workflow").
 # Needs the repository secret ADMIN_TOKEN and the variable KINSBURG_URL. The Instagram token stays in
 # Cloudflare: the post goes through the Worker. Until Instagram is connected there, it records only
 # and keeps the MP4 as a downloadable artifact.
@@ -9,8 +10,13 @@ name: Daily reel
 on:
   schedule:
     - cron: '17 13 * * *'
+    - cron: '17 19 * * *'
   workflow_dispatch:
     inputs:
+      evening:
+        description: 'Record the evening "Built today" Reel'
+        type: boolean
+        default: false
       dry_run:
         description: 'Record only, do not post'
         type: boolean
@@ -27,6 +33,8 @@ jobs:
     timeout-minutes: 30
     env:
       KINSBURG_URL: ${{ vars.KINSBURG_URL }}
+      REEL_SERIES: ${{ (github.event.schedule == '17 19 * * *' || inputs.evening) && 'built-today' || '' }}
+      REEL_SLOT: ${{ (github.event.schedule == '17 19 * * *' || inputs.evening) && 'evening' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

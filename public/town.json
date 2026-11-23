@@ -192,5 +192,88 @@
       }
     ]
   },
-  "generatedAt": "2026-11-18T19:58:20Z"
+  "generatedAt": "2026-11-18T19:58:20Z",
+  "builds": [
+    {
+      "id": 1,
+      "kind": "park",
+      "by": "fig.and.thyme",
+      "day": 1,
+      "likes": 212
+    },
+    {
+      "id": 2,
+      "kind": "ferris",
+      "by": "the.early.daisy",
+      "day": 1,
+      "likes": 148
+    },
+    {
+      "id": 3,
+      "kind": "pool",
+      "by": "nora_rides",
+      "day": 1,
+      "likes": 97
+    },
+    {
+      "id": 4,
+      "kind": "castle",
+      "by": "the.early.gecko",
+      "day": 1,
+      "likes": 64
+    },
+    {
+      "id": 5,
+      "kind": "cafe",
+      "by": "basil.and.pancake",
+      "day": 1,
+      "likes": 41
+    },
+    {
+      "id": 6,
+      "kind": "tower",
+      "by": "cora_dumpling_29",
+      "day": 1,
+      "likes": 33
+    }
+  ],
+  "besties": [
+    [
+      "just.rafa",
+      "hey.aiko"
+    ]
+  ],
+  "requests": [
+    {
+      "kind": "carousel",
+      "likes": 184,
+      "count": 9
+    },
+    {
+      "kind": "icecream",
+      "likes": 131,
+      "count": 6
+    },
+    {
+      "kind": "stadium",
+      "likes": 88,
+      "count": 4
+    },
+    {
+      "kind": "ship",
+      "likes": 52,
+      "count": 3
+    },
+    {
+      "kind": "library",
+      "likes": 19,
+      "count": 1
+    }
+  ],
+  "holds": [
+    {
+      "number": 600,
+      "days": 5
+    }
+  ]
 }

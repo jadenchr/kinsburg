@@ -7,6 +7,9 @@ import { eventStmt, joinMany, writeSnapshots, healSnapshots, type JoinResult, ty
 import { verifyMetaSignature } from './crypto';
 import { closeDuePolls, handleDms, privateReply, processTownComments } from './town';
 import { processCastComments } from './cast';
+import { bestieAfterJoin, processBuildComments } from './builds';
+import { parseBestie } from '../../shared/builds.mjs';
+import type { Row } from '../../shared/residents-format.mjs';
 import { processLifeComments } from './life';
 import { processSimComments } from './sim';
 import { type Env, intVar, json, log } from './env';
@@ -17,6 +20,8 @@ export interface IgComment {
   username: string;
   mediaId: string;
   igUserId?: string;
+  /** Instagram like count (comment checks only); ranks build requests. */
+  likes?: number;
   /** The city account already replied under this comment (from the comment's `replies` field). */
   repliedByUs?: boolean;
 }
@@ -135,12 +140,30 @@ export async function processComments(env: Env, comments: IgComment[], source: J
   if (reads.length) for (const r of await db.batch<{ comment_id: string }>(reads)) for (const row of r.results) done.add(row.comment_id);
   const fresh = unique.filter((c) => !done.has(c.id)).slice(0, MAX_JOINS_PER_RUN);
 
-  const report = { matched: unique.length, fresh: fresh.length, joined: [] as string[], exists: 0, rejected: [] as string[], replies: 0, replyErrors: 0 };
+  const report = { matched: unique.length, fresh: fresh.length, joined: [] as string[], exists: 0, rejected: [] as string[], replies: 0, replyErrors: 0, besties: [] as Array<{ handle: string; friend: string; outcome: string }> };
   if (!fresh.length) return report;
 
-  let results: JoinResult[];
+  // "MOVE IN @friend" comments join one at a time, each followed by its bestie hold, so the held
+  // plot is the one right after the commenter's. Everyone else joins in one batch.
+  const bestieOf = fresh.map((c) => parseBestie(c.text, own));
+  const results: JoinResult[] = new Array(fresh.length);
+  const holdRows: Row[] = [];
+  const bestieReport: Array<{ handle: string; friend: string; outcome: string }> = [];
   try {
-    results = await joinMany(env, fresh.map((c) => ({ raw: c.username, source, igUserId: c.igUserId })));
+    const plain = fresh.map((_, i) => i).filter((i) => !bestieOf[i]);
+    const batch = await joinMany(env, plain.map((i) => ({ raw: fresh[i].username, source, igUserId: fresh[i].igUserId })));
+    plain.forEach((i, k) => (results[i] = batch[k]));
+    for (let i = 0; i < fresh.length; i++) {
+      if (!bestieOf[i]) continue;
+      const [r] = await joinMany(env, [{ raw: fresh[i].username, source, igUserId: fresh[i].igUserId }]);
+      results[i] = r;
+      if (r.status === 'joined' || r.status === 'exists') {
+        // Existing residents only get paired (a hold would not be next to their house).
+        const b = await bestieAfterJoin(env, r.handle, bestieOf[i]!, Date.now(), r.status === 'joined');
+        bestieReport.push({ handle: r.handle, friend: bestieOf[i]!, outcome: b.outcome });
+        if (b.row) holdRows.push(b.row);
+      }
+    }
   } catch (err) {
     log('join_batch_failed', { error: String(err) });
     throw err;
@@ -185,8 +208,9 @@ export async function processComments(env: Env, comments: IgComment[], source: J
       .bind(c.id, c.mediaId, results[i].handle, results[i].status, replied.has(c.id) ? 1 : 0),
   );
   for (const r of results) if (r.status === 'joined') extra.push(eventStmt(env, 'join', r.handle, { source, number: r.number }));
+  report.besties = bestieReport;
   const rows = results.filter((r) => r.status === 'joined' && r.row).map((r) => r.row!);
-  await writeSnapshots(env, rows, extra);
+  await writeSnapshots(env, [...rows, ...holdRows], extra);
   if (report.replies) await noteReplies(env, report.replies);
   return report;
 }
@@ -215,12 +239,12 @@ export async function pollComments(env: Env) {
     let after: string | undefined;
     for (let page = 0; page < MAX_PAGES_PER_MEDIA; page++) {
       try {
-        const params: Record<string, string> = { fields: 'id,text,username,timestamp,replies{username}', limit: '50' };
+        const params: Record<string, string> = { fields: 'id,text,username,timestamp,like_count,replies{username}', limit: '50' };
         if (after) params.after = after;
         const res = await ig.get(`${m.id}/comments`, params);
         for (const c of Array.isArray(res?.data) ? res.data : []) {
           if (c && typeof c.id === 'string' && typeof c.username === 'string') {
-            comments.push({ id: c.id, text: String(c.text ?? ''), username: c.username, mediaId: m.id, repliedByUs: repliedByCity(env, c) });
+            comments.push({ id: c.id, text: String(c.text ?? ''), username: c.username, mediaId: m.id, likes: Number(c.like_count ?? 0), repliedByUs: repliedByCity(env, c) });
           }
         }
         after = res?.paging?.next ? res?.paging?.cursors?.after : undefined;
@@ -233,6 +257,7 @@ export async function pollComments(env: Env) {
     }
   }
   const report = await processComments(env, comments, 'comment', ig);
+  const buildReqs = await processBuildComments(env, comments);
   const catchUp = await replyToMissed(env, comments, ig, await replyAllowance(env));
   const town = await processTownComments(env, comments);
   const cast = await processCastComments(env, comments);
@@ -240,7 +265,7 @@ export async function pollComments(env: Env) {
   const sim = await processSimComments(env, comments);
   const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied };
+  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
@@ -506,7 +531,7 @@ export async function repliesAdmin(env: Env, body: any) {
   const missed = await replyToMissed(env, comments, ig, allowance, !!body?.dryRun);
   const otherUnanswered = comments
     .filter((c) => c.username.toLowerCase() !== own && !c.repliedByUs && !matchesMoveIn(c.text))
-    .map((c) => ({ username: c.username, text: c.text.slice(0, 80) }));
+    .map((c) => ({ id: c.id, username: c.username, text: c.text.slice(0, 80) }));
   return { comments: comments.length, perPost, missed, otherUnanswered, pace: await replyStatus(env) };
 }
 
@@ -571,3 +596,27 @@ async function pauseReplies(env: Env, err: unknown) {
 
 /** A few seconds between replies, like a person typing. */
 const humanPause = () => new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000));
+
+/**
+ * A hand-picked reply (POST /admin/reply { commentId, message }). Counts toward the daily cap and
+ * never goes out while replies are paused by an Instagram comment block.
+ */
+export async function handReply(env: Env, body: any) {
+  const commentId = String(body?.commentId ?? '');
+  const message = String(body?.message ?? '').trim();
+  if (!/^\d{5,30}$/.test(commentId) || !message || message.length > 500) return { error: 'need commentId (digits) and message (1-500 chars)' };
+  const status = await replyStatus(env);
+  if (status.pausedUntil) return { error: `replies are paused until ${status.pausedUntil} (Instagram comment block)` };
+  if (status.today >= status.perDay) return { error: `daily reply cap reached (${status.perDay})` };
+  const token = await getToken(env);
+  if (!token) return { error: 'Instagram not connected' };
+  try {
+    const r = await new IgClient(env.IG_API_BASE, token).post(`${commentId}/replies`, { message });
+    await noteReplies(env, 1);
+    await env.DB.prepare('UPDATE processed_comments SET replied = 1 WHERE comment_id = ?1').bind(commentId).run();
+    return { ok: true, id: r?.id ?? null };
+  } catch (err) {
+    if (isCommentBlock(err)) await pauseReplies(env, err);
+    return { error: String((err as Error).message ?? err) };
+  }
+}

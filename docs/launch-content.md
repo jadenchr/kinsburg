@@ -32,7 +32,15 @@ From their public profile (checked 11 Nov 2026): 19 posts, about 8,971 followers
 - Alternatives: `Kinsburg | a city for every follower`, `Kinsburg · cozy city game`
 
 ### Bio options (each is 150 characters or fewer)
-1. **Recommended:**
+0. **Current (from November 2026), with requests, besties and the promo email:**
+   ```
+   Every follower gets a house 🏡
+   Comment MOVE IN (+ @bestie = next door)
+   Comment what to build next 🎡
+   📧 Promos: hello@kinsburg.com
+   ```
+   (about 130 characters.) Instagram can't change the bio through its API: paste it in by hand (Edit profile → Bio).
+1. **Recommended (launch):**
    ```
    Every follower gets a house in this city.
    Comment MOVE IN on any post → your address, job + resident card.

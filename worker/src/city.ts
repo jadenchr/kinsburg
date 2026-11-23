@@ -1,6 +1,7 @@
 // Residents + snapshots. D1 is the source of truth; `city_shards` holds pre-built compact JSON
 // (Row[] per shard) so reads never touch the residents table and a join rewrites only one shard.
 // CPU-light: no layout code here, only string/JSON work on at most a few shards.
+import { claimHolds } from './builds';
 import {
   PERK_BIT,
   cityDayAt,
@@ -132,6 +133,17 @@ export async function joinMany(env: Env, reqs: JoinRequest[]): Promise<JoinResul
     if (blocked.has(handle)) first.status = 'blocked';
     else if (existing.has(handle)) first.number = existing.get(handle);
     else toInsert.push(handle);
+  }
+  // Someone held a plot next door for this person ("MOVE IN @friend"): they move onto it.
+  if (toInsert.length) {
+    const claimed = await claimHolds(env, toInsert, pending.get(toInsert[0])!.req.source);
+    for (const [handle, row] of claimed) {
+      const first = results[pending.get(handle)!.idx[0]];
+      first.status = 'joined';
+      first.number = row[1];
+      first.row = row;
+      toInsert.splice(toInsert.indexOf(handle), 1);
+    }
   }
   if (toInsert.length) {
     const stmts = toInsert.map((handle) => {

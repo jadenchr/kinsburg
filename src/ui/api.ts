@@ -1,7 +1,7 @@
 // Contract for the page UI (everything drawn in HTML over the canvas).
 // Implemented in src/ui/index.ts.
 import type { CityData, Resident } from '../types';
-import type { BuildingRef } from '../city/api';
+import type { BuildInfo, BuildingRef } from '../city/api';
 import type { SkyState } from '../theme';
 import type { TownInfo } from '../data/town';
 import type { TownSection } from './town';
@@ -28,6 +28,12 @@ export interface AppUI {
   openResident(resident: Resident, data: CityData): void;
   /** Open the card for a city building: who works there and how to join them. */
   openBuilding(building: BuildingRef, data: CityData): void;
+  /** Open the card for something the city built: what it is, who asked, when. */
+  openBuild(build: BuildInfo): void;
+  /** A small message at the bottom of the screen (found a secret, saved plot…). */
+  toast(text: string): void;
+  /** "Secrets 2/6" counter; hidden until at least one is found. */
+  setSecrets(found: number, total: number): void;
   closeCard(): void;
   /** Search found nobody with that handle. */
   showNotFound(handle: string, account: string): void;

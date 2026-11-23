@@ -10,6 +10,7 @@ import { renderShareCard, shareOrDownload } from './share';
 import { buyUrl, createTownPanel, jobsText, progressText, whereText } from './town';
 import type { TownInfo } from '../data/town';
 import type { BuildingRef } from '../city/api';
+import { BUILD_BY_KIND } from '../../shared/builds.mjs';
 import { PET_NAMES } from '../../shared/residents-format.mjs';
 import { SERVICE_STAFF } from '../../shared/city-layout.mjs';
 import { INCIDENTS } from '../../shared/sim.mjs';
@@ -61,9 +62,10 @@ export const createUI: CreateUI = (root) => {
   const clockIcon = el('span', { class: 'kb-clock-icon' });
   const clockTime = el('time');
   clockChip.append(clockIcon, clockTime);
+  const secretChip = el('li', { class: 'kb-chip kb-chip-quiet', hidden: '' });
   const demoChip = el('li', { class: 'kb-chip kb-chip-quiet', hidden: '' });
   demoChip.textContent = 'Sample residents';
-  stats.append(dayChip, popChip, clockChip, demoChip);
+  stats.append(dayChip, popChip, clockChip, secretChip, demoChip);
   const townBtn = el('button', { type: 'button', class: 'kb-btn kb-btn-secondary kb-town-btn' }, ICONS.flag);
   townBtn.append(document.createTextNode('Town hall'));
   top.append(wordmark, stats, townBtn);
@@ -133,6 +135,10 @@ export const createUI: CreateUI = (root) => {
   const town = createTownPanel();
   let townInfo: TownInfo | null = null;
 
+  // ── Toast ──────────────────────────────────────────────────────────────
+  const toastEl = el('div', { class: 'kb-toast', role: 'status', 'aria-live': 'polite', hidden: '' });
+  let toastTimer = 0;
+
   // ── Splash ─────────────────────────────────────────────────────────────
   const splash = el('div', { class: 'kb-splash' });
   const splashInner = el('div', { class: 'kb-splash-inner' });
@@ -160,7 +166,7 @@ export const createUI: CreateUI = (root) => {
   splashInner.append(splashMark, loading, errorBox);
   splash.append(splashInner);
 
-  root.append(top, notFound, form, card, town.dialog, splash);
+  root.append(top, notFound, form, card, town.dialog, toastEl, splash);
   townBtn.addEventListener('click', () => openTown());
   town.onClosed(() => {
     root.classList.remove('kb-town-open');
@@ -357,6 +363,17 @@ export const createUI: CreateUI = (root) => {
     if (storeys > 1) fact(ICONS.roof, '', `${storeys}-storey house`);
     if (resident.pet) fact(ICONS.paw, 'Pet: ', PET_NAMES[resident.pet]);
     if ((resident.coins ?? 0) > 0) fact(ICONS.coin, 'Town coins: ', `${resident.coins!.toLocaleString()} town coins`);
+    const pair = (townInfo?.besties ?? []).find(([a, b]) => a.toLowerCase() === resident.handle.toLowerCase() || b.toLowerCase() === resident.handle.toLowerCase());
+    if (pair) {
+      const other = pair[0].toLowerCase() === resident.handle.toLowerCase() ? pair[1] : pair[0];
+      const li = el('li', { class: 'kb-fact' }, ICONS.heart);
+      li.append(document.createTextNode('Bestie: '));
+      const btn = el('button', { type: 'button', class: 'kb-link' });
+      btn.textContent = `@${other}`;
+      btn.addEventListener('click', () => searchCbs.forEach((cb) => cb(other)));
+      li.append(btn);
+      facts.append(li);
+    }
     for (const inc of (townInfo?.sim?.open ?? []).filter((i) => i.target === resident.handle)) {
       const li = el('li', { class: 'kb-fact kb-fact-alert' }, ICONS.pin);
       li.append(el('span', { class: 'kb-vh' }, 'Happening here: '));
@@ -458,6 +475,50 @@ export const createUI: CreateUI = (root) => {
       if (!card.open) card.show();
       root.classList.add('kb-card-open');
       cardTitle.focus({ preventScroll: true });
+    },
+    openBuild(b) {
+      hideNotFound();
+      current = null;
+      const def = BUILD_BY_KIND[b.kind];
+      cardTitle.textContent = `${def?.emoji ?? '🏗️'} ${def?.label ?? 'Something new'}`;
+      cardNumber.textContent = `Build #${b.id.toLocaleString()}`;
+      facts.replaceChildren();
+      const li = el('li', { class: 'kb-fact' }, ICONS.pin);
+      li.append(document.createTextNode('Requested by '));
+      const who = el('button', { type: 'button', class: 'kb-link' });
+      who.textContent = `@${b.by}`;
+      who.addEventListener('click', () => searchCbs.forEach((cb) => cb(b.by)));
+      li.append(who);
+      facts.append(li);
+      const day = el('li', { class: 'kb-fact' }, ICONS.key);
+      day.append(document.createTextNode(`Built on Day ${b.day.toLocaleString()}`));
+      facts.append(day);
+      const likes = el('li', { class: 'kb-fact' }, ICONS.heart);
+      likes.append(document.createTextNode(`${b.likes.toLocaleString()} ${b.likes === 1 ? 'like' : 'likes'} on the request`));
+      facts.append(likes);
+      staff.replaceChildren();
+      staff.hidden = true;
+      buildingNote.replaceChildren(document.createTextNode('Want something built? Comment it on any post. The most-liked requests get built every day.'));
+      cardMode(false);
+      staff.hidden = true;
+      if (!card.open) card.show();
+      root.classList.add('kb-card-open');
+      cardTitle.focus({ preventScroll: true });
+    },
+    toast(text) {
+      toastEl.textContent = text;
+      toastEl.hidden = false;
+      toastEl.classList.remove('kb-toast-in');
+      void toastEl.offsetWidth;
+      toastEl.classList.add('kb-toast-in');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => {
+        toastEl.hidden = true;
+      }, 4200);
+    },
+    setSecrets(found, total) {
+      secretChip.hidden = found <= 0;
+      secretChip.textContent = `Secrets ${found}/${total}`;
     },
     closeCard,
     showNotFound(handle, account) {

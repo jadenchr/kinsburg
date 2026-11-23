@@ -42,10 +42,12 @@ function fail(msg) {
 }
 
 // ── what to publish ──────────────────────────────────────────────────────────
-const manifestPath = join(OUT, `reel-${DATE}.json`);
+const SLOT = (opt('slot', process.env.REEL_SLOT ?? '') || '').replace(/[^a-z0-9-]/gi, '').toLowerCase();
+const STEM = `reel-${DATE}${SLOT ? `-${SLOT}` : ''}`;
+const manifestPath = join(OUT, `${STEM}.json`);
 const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null;
-const videoFile = manifest ? join(ROOT, manifest.video) : join(OUT, `reel-${DATE}.mp4`);
-const coverFile = manifest ? join(ROOT, manifest.cover) : join(OUT, `reel-${DATE}.jpg`);
+const videoFile = manifest ? join(ROOT, manifest.video) : join(OUT, `${STEM}.mp4`);
+const coverFile = manifest ? join(ROOT, manifest.cover) : join(OUT, `${STEM}.jpg`);
 const caption = opt('caption', manifest?.caption ?? (existsSync(join(OUT, 'caption.txt')) ? readFileSync(join(OUT, 'caption.txt'), 'utf8').trim() : ''));
 let videoUrl = opt('video-url');
 let coverUrl = opt('cover-url');
