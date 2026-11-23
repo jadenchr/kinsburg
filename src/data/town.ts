@@ -16,6 +16,19 @@ export interface TownPoll {
   total: number;
   options: TownPollOption[];
   result: { winner: string | null; label: string | null } | null;
+  /** automatic elections: comment VOTE and the candidate's @ on any post */
+  anywhere?: boolean;
+}
+
+/** Elections, approval and protests (rules in shared/politics.mjs). */
+export interface TownPolitics {
+  mayor: { handle: string; sinceDay: number; termEndsDay: number; approval: number } | null;
+  /** nominations: residents comment RUN FOR MAYOR; voting: the poll with id pollId (in TownInfo.polls) */
+  election: { id: string; phase: 'nominations' | 'voting'; recall: boolean; nominationsCloseAt: string; pollId: string | null; candidates: string[] } | null;
+  /** PROTEST comments against the sitting mayor in the last 7 days; threshold forces a recall */
+  protest: { count: number; threshold: number; active: number; recent: string[] } | null;
+  /** the mayor can comment FUND HEALTH / SAFETY / EDUCATION / PARKS once a day */
+  fund: { cost: number; boost: number };
 }
 export type PerkKey = 'star' | 'goldRoof' | 'monument' | 'street' | 'poster';
 
@@ -63,6 +76,8 @@ export interface TownInfo {
   besties?: [string, string][];
   /** open build requests, most liked first (at most 10) */
   requests?: { kind: string; likes: number; count: number }[];
+  /** elections, approval and protests; missing on an older Worker */
+  politics?: TownPolitics;
 }
 
 const EMPTY: TownInfo = { day: 1, mayor: null, polls: [], sponsors: [], perkLinks: {}, levelAt: [3, 10, 30], account: 'kinsburgtown' };

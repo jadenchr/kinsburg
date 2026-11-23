@@ -84,6 +84,7 @@ async function start() {
     if (town) {
       city.setExtras(town.builds ?? [], town.holds ?? []);
       city.setBesties(town.besties ?? []);
+      city.setPolitics(town.politics ?? null);
     }
     return void import('./reel').then((m) => m.startReel(city, data, params, town));
   }
@@ -126,6 +127,7 @@ async function start() {
     city.setIncidents(town.sim?.open ?? []);
     city.setExtras(town.builds ?? [], town.holds ?? []);
     city.setBesties(town.besties ?? []);
+    city.setPolitics(town.politics ?? null);
     ui.setTown(town, data);
   };
   loadTown(data.demo).then((town) => {

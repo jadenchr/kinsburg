@@ -12,6 +12,7 @@ import { parseBestie } from '../../shared/builds.mjs';
 import type { Row } from '../../shared/residents-format.mjs';
 import { processLifeComments } from './life';
 import { processSimComments } from './sim';
+import { processPoliticsComments } from './politics';
 import { type Env, intVar, json, log } from './env';
 
 export interface IgComment {
@@ -41,7 +42,7 @@ class IgError extends Error {
  * Instagram refusing to let the account comment right now (anti-spam action block, rate limits).
  * Retrying makes the block longer, so replies pause instead (see pauseReplies).
  */
-function isCommentBlock(err: unknown): boolean {
+export function isCommentBlock(err: unknown): boolean {
   if (!(err instanceof IgError)) return false;
   return [4, 17, 20, 32, 368, 613].includes(err.code ?? -1) || err.subcode === 1772107;
 }
@@ -263,9 +264,10 @@ export async function pollComments(env: Env) {
   const cast = await processCastComments(env, comments);
   const life = await processLifeComments(env, comments);
   const sim = await processSimComments(env, comments);
+  const politics = await processPoliticsComments(env, comments);
   const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
+  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, politics, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
@@ -309,8 +311,9 @@ export async function handleInstagramWebhook(req: Request, env: Env): Promise<Re
     const cast = await processCastComments(env, comments);
     const life = await processLifeComments(env, comments);
     const sim = await processSimComments(env, comments);
+    const politics = await processPoliticsComments(env, comments);
     const dms = messaging.length ? await handleDms(env, client, messaging) : null;
-    return json({ ok: true, ...report, town, cast: cast.cast, life, sim, dms });
+    return json({ ok: true, ...report, town, cast: cast.cast, life, sim, politics, dms });
   } catch (err) {
     log('ig_webhook_failed', { error: String(err) });
     return new Response('retry later', { status: 500 }); // Meta retries for up to 36 h
@@ -566,13 +569,13 @@ export async function replyStatus(env: Env) {
 }
 
 /** How many replies may go out right now. */
-async function replyAllowance(env: Env): Promise<number> {
+export async function replyAllowance(env: Env): Promise<number> {
   const s = await replyStatus(env);
   if (s.pausedUntil) return 0;
   return Math.max(0, Math.min(s.perRun, s.perDay - s.today));
 }
 
-async function noteReplies(env: Env, n: number) {
+export async function noteReplies(env: Env, n: number) {
   const s = await replyStatus(env);
   const today = new Date().toISOString().slice(0, 10);
   const stmts = [metaSet(env, 'replies_day', today), metaSet(env, 'replies_count', String(s.today + n))];
@@ -582,7 +585,7 @@ async function noteReplies(env: Env, n: number) {
   await env.DB.batch(stmts);
 }
 
-async function pauseReplies(env: Env, err: unknown) {
+export async function pauseReplies(env: Env, err: unknown) {
   const s = await replyStatus(env);
   const hours = s.lastPauseHours ? Math.min(PAUSE_MAX_HOURS, s.lastPauseHours * 2) : PAUSE_FIRST_HOURS;
   const until = new Date(Date.now() + hours * 3600_000).toISOString();

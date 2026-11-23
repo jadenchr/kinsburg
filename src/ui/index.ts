@@ -167,6 +167,10 @@ export const createUI: CreateUI = (root) => {
   splash.append(splashInner);
 
   root.append(top, notFound, form, card, town.dialog, toastEl, splash);
+  town.onSelect((handle) => {
+    town.close();
+    searchCbs.forEach((cb) => cb(handle));
+  });
   townBtn.addEventListener('click', () => openTown());
   town.onClosed(() => {
     root.classList.remove('kb-town-open');
@@ -391,6 +395,10 @@ export const createUI: CreateUI = (root) => {
     if (has('monument') || has('street')) perk('kb-perk-founder', ICONS.flag, 'Founder');
     if (has('star')) perk('kb-perk-gold', ICONS.star, 'Gold star');
     if (has('goldRoof')) perk('kb-perk-gold', ICONS.roof, 'Golden roof');
+    const pol = townInfo?.politics;
+    const mayorHandle = pol?.mayor?.handle ?? townInfo?.mayor?.handle;
+    if (mayorHandle === resident.handle) perk('kb-perk-mayor', ICONS.crown, 'Mayor');
+    if (pol?.election?.candidates.includes(resident.handle)) perk('kb-perk-mayor', ICONS.flag, 'Running for mayor');
     if (resident.follower) perk('kb-perk-follower', ICONS.key, 'Follower');
 
     const account = townInfo?.account ?? data.account;

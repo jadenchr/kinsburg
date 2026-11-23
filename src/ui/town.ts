@@ -1,11 +1,12 @@
 // Town hall panel: how to move in, the mayor, the current vote, how houses grow, the founders,
 // supporting the city (perks) and the policy pages. Opened from the "Town hall" button.
 import type { CityData, Resident } from '../types';
-import type { PerkKey, TownIncident, TownInfo, TownPoll } from '../data/town';
+import type { PerkKey, TownIncident, TownInfo, TownPoll, TownPolitics } from '../data/town';
 import { ICONS } from './icons';
 import { addressOf } from './lookup';
 import { BUILD_BY_KIND } from '../../shared/builds.mjs';
 import { COINS, INCIDENTS, PET_COIN_PRICE } from '../../shared/sim.mjs';
+import { TERM_DAYS } from '../../shared/politics.mjs';
 
 /** What each perk is, in the words shown to people. Cosmetic only, never power. */
 export const PERK_INFO: { key: PerkKey; name: string; what: string }[] = [
@@ -47,6 +48,8 @@ export interface TownPanel {
   open(section?: TownSection): void;
   close(): void;
   onClosed(cb: () => void): void;
+  /** a resident's @ was chosen: show their house */
+  onSelect(cb: (handle: string) => void): void;
 }
 
 const STAT_ROWS = [
@@ -59,6 +62,19 @@ const STAT_ROWS = [
 /** A word for a stat so the level never rests on colour alone. */
 export function statWord(n: number): string {
   return n >= 75 ? 'Good' : n >= 50 ? 'Fair' : n >= 30 ? 'Low' : 'Needs help';
+}
+
+/** "Fair" etc. for the mayor's approval, same words as the stats. */
+export const approvalWord = statWord;
+
+/** "in 2 days", "in 5 hours", "within the hour" */
+export function closesIn(iso: string, now = Date.now()): string {
+  const ms = Date.parse(iso) - now;
+  if (!(ms > 3_600_000)) return 'within the hour';
+  const h = Math.round(ms / 3_600_000);
+  if (h < 36) return `in ${h} ${h === 1 ? 'hour' : 'hours'}`;
+  const d = Math.round(ms / 86_400_000);
+  return `in ${d} ${d === 1 ? 'day' : 'days'}`;
 }
 
 const lower = (s: string) => s.toLowerCase();
@@ -124,7 +140,9 @@ function pollBlock(p: TownPoll, account: string): HTMLElement {
     el(
       'p',
       { class: 'kb-town-note' },
-      p.status === 'open'
+      p.status === 'open' && p.anywhere
+        ? `Comment VOTE and their @ on any post by @${account}, for example VOTE @${p.options[0]?.key ?? 'name'}. One vote each, until ${whenText}.`
+        : p.status === 'open'
         ? `Residents vote by commenting the letter on our latest vote post on @${account}. One vote each, until ${whenText}.`
         : p.result?.label
           ? `Closed. ${p.kind === 'election' ? 'New mayor' : 'Kinsburg chose'}: ${p.result.label}.`
@@ -147,6 +165,7 @@ export function createTownPanel(): TownPanel {
   let town: TownInfo | null = null;
   let data: CityData | null = null;
   const closedCbs: (() => void)[] = [];
+  const selectCbs: ((handle: string) => void)[] = [];
 
   function section(id: TownSection | 'mayor' | 'grow' | 'founders' | 'life', heading: string, ...kids: Node[]) {
     const s = el('section', { class: 'kb-town-section', id: `kb-town-${id}`, 'aria-labelledby': `kb-town-${id}-h` });
@@ -215,6 +234,86 @@ export function createTownPanel(): TownPanel {
     return section('status', 'City status', ...kids);
   }
 
+  /** @handle as a button that shows their house, like the staff names on building cards */
+  function handleButton(h: string) {
+    const btn = el('button', { type: 'button', class: 'kb-handle-btn' }, `@${h}`);
+    btn.addEventListener('click', () => selectCbs.forEach((cb) => cb(h)));
+    return btn;
+  }
+  function handleList(hs: string[], label: string) {
+    const ul = el('ul', { class: 'kb-handle-list', 'aria-label': label });
+    for (const h of hs) ul.append(el('li', {}, handleButton(h)));
+    return ul;
+  }
+
+  function mayorSection(t: TownInfo): HTMLElement {
+    const pol: TownPolitics | undefined = t.politics;
+    const m = pol?.mayor ?? (t.mayor ? { handle: t.mayor.handle, sinceDay: t.mayor.sinceDay, termEndsDay: t.mayor.sinceDay + TERM_DAYS, approval: null } : null);
+    const kids: Node[] = [];
+    const cmd = (c: string) => el('b', {}, c);
+    const ig = `@${t.account}`;
+    if (m) {
+      kids.push(el('h4', { class: 'kb-town-sub' }, 'The mayor'));
+      kids.push(el('p', { class: 'kb-mayor-name' }, el('span', { class: 'kb-mayor-badge' }, html(ICONS.crown), 'Mayor '), handleButton(m.handle)));
+      kids.push(el('p', {}, `Mayor since Day ${m.sinceDay.toLocaleString()} · term ends Day ${m.termEndsDay.toLocaleString()}`));
+      if (typeof m.approval === 'number') {
+        const v = Math.round(m.approval);
+        const ul = el('ul', { class: 'kb-poll-options kb-stats-list' });
+        const li = el('li', { class: 'kb-poll-option kb-stat' + (v < 50 ? ' kb-stat-low' : '') });
+        li.append(el('span', { class: 'kb-poll-label' }, 'Approval'), el('span', { class: 'kb-poll-count' }, `${v} · ${approvalWord(v)}`));
+        const bar = el('span', { class: 'kb-poll-bar', 'aria-hidden': 'true' });
+        bar.style.setProperty('--w', `${v}%`);
+        li.append(bar, el('span', { class: 'kb-vh' }, `Approval: ${v} out of 100, ${approvalWord(v)}`));
+        ul.append(li);
+        kids.push(ul, el('p', { class: 'kb-town-note' }, 'The average of the four city stats, minus the share of this week\u2019s active residents who protest.'));
+      }
+      if (pol) {
+        kids.push(el('h4', { class: 'kb-town-sub' }, 'What the mayor can do'));
+        const stat = t.sim ? ` Treasury today: ${t.sim.treasury.toLocaleString()} town coins.` : '';
+        kids.push(
+          el('p', {}, 'Once a day the mayor can comment ', cmd('FUND HEALTH'), ', ', cmd('FUND SAFETY'), ', ', cmd('FUND EDUCATION'), ' or ', cmd('FUND PARKS'), ` on any post. Each one spends ${pol.fund.cost.toLocaleString()} town coins from the treasury and raises that stat by ${pol.fund.boost}.${stat}`),
+        );
+      }
+    } else {
+      kids.push(el('p', {}, 'Kinsburg has no mayor yet.'));
+      if (!pol?.election) kids.push(el('p', {}, 'Elections start by themselves. Nominations open for 3 days, then the whole town votes for 2 days. A mayor serves two weeks.'));
+    }
+    const e = pol?.election;
+    if (e) {
+      kids.push(el('h4', { class: 'kb-town-sub' }, e.recall ? 'Recall election' : 'Election'));
+      if (e.recall) kids.push(el('p', {}, 'Enough residents protested, so Kinsburg is choosing a mayor again. The mayor may run again.'));
+      if (e.phase === 'nominations') {
+        kids.push(el('p', {}, el('b', {}, `Nominations close ${closesIn(e.nominationsCloseAt)}.`), ' Then the town votes for 2 days.'));
+        if (e.candidates.length) kids.push(el('p', { class: 'kb-town-note' }, 'Running so far:'), handleList(e.candidates, 'Candidates so far'));
+        else kids.push(el('p', { class: 'kb-town-note' }, 'Nobody is running yet.'));
+        kids.push(el('p', {}, 'Want the job? Comment ', cmd('RUN FOR MAYOR'), ` on any post by ${ig}. Up to 6 can run.`));
+      } else {
+        const poll = t.polls.find((p) => p.id === e.pollId);
+        kids.push(el('p', {}, el('b', {}, 'Voting is open.'), ' One vote each.'));
+        if (poll) kids.push(pollBlock(poll, t.account));
+        else if (e.candidates.length) kids.push(handleList(e.candidates, 'Candidates'));
+      }
+    }
+    const pr = pol?.protest;
+    if (pr && m) {
+      kids.push(el('h4', { class: 'kb-town-sub' }, 'Protests'));
+      const need = Math.max(1, pr.threshold);
+      const shown = Math.min(pr.count, need);
+      const ul = el('ul', { class: 'kb-poll-options kb-stats-list' });
+      const li = el('li', { class: 'kb-poll-option' });
+      li.append(el('span', { class: 'kb-poll-label' }, `${pr.count.toLocaleString()} of ${need.toLocaleString()} protesters needed for a recall`), el('span', { class: 'kb-poll-count' }, `${Math.round((shown / need) * 100)}%`));
+      const bar = el('span', { class: 'kb-poll-bar', 'aria-hidden': 'true' });
+      bar.style.setProperty('--w', `${(shown / need) * 100}%`);
+      li.append(bar);
+      ul.append(li);
+      kids.push(ul);
+      kids.push(el('p', { class: 'kb-town-note' }, `Counted over 7 days, from ${pr.active.toLocaleString()} residents active this week. At the threshold a recall election starts at once.`));
+      if (pr.recent.length) kids.push(el('p', { class: 'kb-town-note' }, 'Recent protesters:'), handleList(pr.recent.slice(0, 12), 'Recent protesters'));
+      kids.push(el('p', {}, 'Not happy with the mayor? Comment ', cmd('PROTEST'), ' on any post. One per person per term.'));
+    }
+    return section('mayor', 'Mayor', ...kids);
+  }
+
   function render() {
     if (!town || !data) return;
     const t = town;
@@ -267,12 +366,13 @@ export function createTownPanel(): TownPanel {
       ),
     );
 
-    // mayor
-    const mayorText = t.mayor ? el('p', {}, el('b', {}, `@${t.mayor.handle}`), ` has been mayor since Day ${t.mayor.sinceDay.toLocaleString()}.`) : el('p', {}, 'Kinsburg has no mayor yet. The first election is coming soon.');
-    body.append(section('mayor', 'Mayor', mayorText));
+    // mayor, elections and protests
+    body.append(mayorSection(t));
 
-    // votes
-    if (t.polls.length) body.append(section('vote', 'Town vote', ...t.polls.map((p) => pollBlock(p, t.account))));
+    // votes (an automatic election's poll is shown with the election above)
+    const electionPoll = t.politics?.election?.pollId;
+    const polls = t.polls.filter((p) => !(electionPoll && p.id === electionPoll));
+    if (polls.length) body.append(section('vote', 'Town vote', ...polls.map((p) => pollBlock(p, t.account))));
 
     // grow
     const [a, b, c] = t.levelAt;
@@ -344,6 +444,9 @@ export function createTownPanel(): TownPanel {
     },
     onClosed(cb) {
       closedCbs.push(cb);
+    },
+    onSelect(cb) {
+      selectCbs.push(cb);
     },
   };
 }

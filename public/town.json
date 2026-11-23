@@ -1,8 +1,8 @@
 {
   "day": 1,
   "mayor": {
-    "handle": "kinsburgtown",
-    "sinceDay": 1
+    "handle": "wes1975",
+    "sinceDay": 4
   },
   "polls": [
     {
@@ -193,6 +193,30 @@
     ]
   },
   "generatedAt": "2026-11-18T19:58:20Z",
+  "politics": {
+    "mayor": {
+      "handle": "wes1975",
+      "sinceDay": 4,
+      "termEndsDay": 18,
+      "approval": 58
+    },
+    "election": null,
+    "protest": {
+      "count": 4,
+      "threshold": 6,
+      "active": 23,
+      "recent": [
+        "iris.z4",
+        "cottage.and.anchor",
+        "peachy.squirrel",
+        "hana9049"
+      ]
+    },
+    "fund": {
+      "cost": 200,
+      "boost": 6
+    }
+  },
   "builds": [
     {
       "id": 1,
@@ -237,6 +261,12 @@
       "likes": 33
     }
   ],
+  "holds": [
+    {
+      "number": 600,
+      "days": 5
+    }
+  ],
   "besties": [
     [
       "just.rafa",
@@ -268,12 +298,6 @@
       "kind": "library",
       "likes": 19,
       "count": 1
-    }
-  ],
-  "holds": [
-    {
-      "number": 600,
-      "days": 5
     }
   ]
 }

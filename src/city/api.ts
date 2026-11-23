@@ -1,7 +1,7 @@
 // Contract for the city renderer. Implemented in src/city/index.ts.
 import type { CityData, Resident } from '../types';
 import type { SkyState } from '../theme';
-import type { TownIncident } from '../data/town';
+import type { TownIncident, TownPolitics } from '../data/town';
 
 /** Something the city built because commenters asked for it (see shared/builds.mjs). */
 export interface BuildInfo {
@@ -60,6 +60,11 @@ export interface CityView {
    * with the station's vehicle driving there along the roads. Replaces the previous list.
    */
   setIncidents(incidents: TownIncident[]): void;
+  /**
+   * Politics on the map: a protest crowd with signs on the town square while people are
+   * protesting, a flag on the mayor's house, yard signs at candidates' houses during an election.
+   */
+  setPolitics(politics: TownPolitics | null): void;
   /** Sponsor billboards on the town square (rotates every 8 s when there are several). */
   setBillboards(lines: Billboard[]): void;
   /** Called when the user taps/clicks a house (resident) or empty ground (null). */
