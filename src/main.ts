@@ -80,6 +80,7 @@ async function start() {
     const town = params.has('poster') ? null : await loadTown(data.demo);
     if (town) city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
     if (town) city.setIncidents(town.sim?.open ?? []);
+    if (town) city.setPolitics(town.politics ?? null);
     return void import('./reel').then((m) => m.startReel(city, data, params));
   }
   ui.setStats({ day: cityDay(data), residents: data.residents.length, demo: data.demo });
@@ -87,6 +88,7 @@ async function start() {
   const applyTown = (town: Awaited<ReturnType<typeof loadTown>>) => {
     city.setBillboards(town.sponsors.map((s) => ({ name: s.name, message: s.message })));
     city.setIncidents(town.sim?.open ?? []);
+    city.setPolitics(town.politics ?? null);
     ui.setTown(town, data);
   };
   loadTown(data.demo).then((town) => {

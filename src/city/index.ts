@@ -23,6 +23,7 @@ import { buildModel, type Model, type Obj } from './model';
 import { drawAnimated, drawEntry, projFor } from './objects';
 import { drawRing } from './house';
 import { createSimOverlay } from './sim-overlay';
+import { createPoliticsOverlay } from './politics-overlay';
 
 interface Chunk {
   lod: number;
@@ -56,6 +57,7 @@ export const createCityView: CreateCityView = (canvas) => {
   let reelMode = false;
   let billboards: Billboard[] = [];
   const sim = createSimOverlay();
+  const politics = createPoliticsOverlay();
   const reduced = () => !reelMode && motionQuery.matches;
   motionQuery.addEventListener?.('change', onMotion);
 
@@ -364,9 +366,9 @@ export const createCityView: CreateCityView = (canvas) => {
     {
       // what stands in front of a sprite on tile (tx, ty) is repainted over it, inside a clip box
       const sdetail = Math.max(1, detailFor(S));
-      sim.draw(ctx, sky, t, S, v, {
+      const opts = {
         reel: reelMode,
-        front(tx, ty, cx, cy, hw, hh) {
+        front(tx: number, ty: number, cx: number, cy: number, hw: number, hh: number) {
           ctx.save();
           ctx.beginPath();
           ctx.rect(cx - hw, cy - hh, hw * 2, hh * 2);
@@ -375,7 +377,9 @@ export const createCityView: CreateCityView = (canvas) => {
           drawObjects(ctx, { x0: tx - 8, y0: ty - 8, x1: tx + 16, y1: ty + 16, dMin: d - 4, dMax: d + 4, sMin: s0 + 1, sMax: s0 + 8 }, sdetail);
           ctx.restore();
         },
-      });
+      };
+      sim.draw(ctx, sky, t, S, v, opts);
+      politics.draw(ctx, sky, t, S, v, opts);
     }
     for (const i of rings) drawHighlight(m.objs[i], ringMs, S);
   }
@@ -604,6 +608,7 @@ export const createCityView: CreateCityView = (canvas) => {
       dropAllChunks();
       model = buildModel(data);
       sim.setModel(model);
+      politics.setModel(model);
       highlight = -1;
       mode = -1;
       everDrawn = false;
@@ -641,6 +646,10 @@ export const createCityView: CreateCityView = (canvas) => {
     },
     onBuilding(cb) {
       buildingCb = cb;
+    },
+    setPolitics(p) {
+      politics.setPolitics(p);
+      dirty = true;
     },
     setIncidents(list) {
       sim.setIncidents(list);

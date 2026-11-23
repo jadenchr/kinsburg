@@ -56,6 +56,10 @@ Run it again with `-- --url https://kinsburg.com` once real people live there, s
 
 The recorder also reads the city's town data (`<site>/api/city/town.json` for a live site, `/town.json` for a local build). Incidents that residents resolved in the last 26 hours get one or two short lines in the caption, naming the responders as plain names (no @-tags), for example "Last night the.early.gecko and nimble.waffle put out a kitchen fire 🚒." Then comes "Firefighters, police, doctors: comment RESPOND when the city needs you." and, if an open incident still needs people, one "Right now: …" line. The MOVE IN line stays last. On the plain "Day N" post the camera also flies to the latest rescued house. If the town data is missing or old-format, nothing is added and the recording carries on. Use `--no-heroes` to leave it all out. The wording lives in `scripts/reel/series.mjs` (`heroLines`, `openCall`).
 
+## Politics lines
+
+The same town data carries `politics` (and `polls`). The caption gets at most one politics line, placed after the hero lines and before the RESPOND call and MOVE IN, which stays last. Priority: nominations open ("Kinsburg needs a mayor: comment RUN FOR MAYOR to stand.", or the recall wording), then voting (how to vote, up to three candidates as plain names, and the leader once votes exist), then, when protests reach half the recall threshold, a neutral "N of M protests needed for a recall" line. Otherwise, only on the Wednesday "resident of the day" series, "Mayor X has a Y% approval rating." If `politics` is missing or old-format, nothing is added. `--no-heroes` skips this too. The wording lives in `politicsLine` in `scripts/reel/series.mjs`.
+
 ## Run it from GitHub by hand
 
 Actions tab → **Daily reel** → **Run workflow**. "Record only" is ticked by default. Every run keeps the MP4 as a downloadable artifact for 14 days, so you can watch it before turning posting on.

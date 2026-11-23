@@ -34,6 +34,7 @@ const VARS = {
   STRIPE_PERKS: JSON.stringify({ plink_star: 'star', plink_gold: 'goldRoof', plink_poster: 'poster', plink_owl: 'pet:owl' }),
   IG_DM_ENABLED: 'true',
   SIM_RANDOM_INCIDENTS: 'false',
+  IG_CALLS_ENABLED: 'false',
 };
 
 let failures = 0;
@@ -392,6 +393,47 @@ try {
   ok(!!tick.started, 'a forced tick starts a random incident', tick);
   ({ data } = await loadCity());
   try { validateCityData(data); ok(true, 'city still valid with coins'); } catch (e) { ok(false, 'city still valid with coins', String(e)); }
+
+  console.log('\nPolitics: elections, protests, recalls');
+  const pol = async () => (await (await fetch(`${BASE}/api/city/town.json`)).json()).politics;
+  const anns = async () => (await (await admin('/admin/announcements')).json()).map((a) => a.text);
+  ok((await anns()).some((t) => /Kitchen fire at @second\.person's house! Firefighters: comment RESPOND \(2 needed\)/.test(t)), 'starting a fire queues a call for firefighters on Instagram', (await anns()).slice(0, 3));
+  let pv = await pol();
+  if (!pv.election) {
+    r = await admin('/admin/election/start', {});
+    ok(r.status === 200, 'admin opens nominations', r.status);
+  } else ok(pv.election.phase === 'nominations', 'nominations opened on their own (no mayor yet at the first tick)', pv.election);
+  await castHook([['c970', 'RUN FOR MAYOR 🗳️', 'third_person'], ['c971', "I'm running for mayor", 'combo.person'], ['c972', 'run for mayor', 'lurker']]);
+  pv = await pol();
+  ok(pv.election.candidates.includes('third_person') && pv.election.candidates.includes('combo.person') && !pv.election.candidates.includes('lurker'), 'residents stand with RUN FOR MAYOR; non-residents cannot', pv.election);
+  r = await admin('/admin/election/advance', {});
+  pv = await pol();
+  ok(pv.election?.phase === 'voting' && !!pv.election.pollId, 'nominations close into a town-wide vote', pv.election);
+  ok((await anns()).some((t) => t.startsWith('🗳️ Voting is open!')), 'voting announced');
+  await castHook([['c973', 'VOTE @combo.person', 'second.person'], ['c974', 'vote for @combo.person!', 'new_person1'], ['c975', 'VOTE @third_person', 'owl.buyer'], ['c976', 'I like @third_person', 'vet.newcomer']]);
+  let townNow = await (await fetch(`${BASE}/api/city/town.json`)).json();
+  const ep = townNow.polls.find((p) => p.id === pv.election.pollId);
+  ok(ep?.total === 3, 'VOTE comments on any post count; others do not', ep);
+  r = await admin('/admin/election/advance', {});
+  pv = await pol();
+  ok(pv.mayor?.handle === 'combo.person' && !pv.election && typeof pv.mayor.approval === 'number', 'the winner becomes mayor with an approval rating', pv);
+  await castHook([['c977', 'PROTEST', 'third_person'], ['c978', 'protest!', 'second.person'], ['c979', 'PROTEST 😤', 'new_person1'], ['c980', 'protest', 'combo.person']]);
+  pv = await pol();
+  ok(pv.protest.count === 3 && !pv.protest.recent.includes('combo.person'), 'PROTEST counts residents, not the mayor', pv.protest);
+  const approvalBefore = pv.mayor.approval;
+  await admin('/admin/politics/tick', {});
+  ok(!(await pol()).election, 'below the threshold: no recall yet');
+  await castHook([['c981', 'protest', 'owl.buyer'], ['c982', 'I protest', 'vet.newcomer'], ['c983', 'protest', 'third_person']]);
+  pv = await pol();
+  ok(pv.protest.count === 5 && pv.mayor.approval < approvalBefore, 'more protest lowers approval; one protest per person', pv);
+  await admin('/admin/politics/tick', {});
+  pv = await pol();
+  ok(pv.election?.recall === true && pv.election.phase === 'nominations', 'enough protesters force a recall election', pv.election);
+  ok((await anns()).some((t) => t.includes('recall election')), 'the recall is announced');
+  r = await admin('/admin/coins', { handle: 'combo.person', add: 1 });
+  await castHook([['c984', 'FUND HEALTH', 'combo.person'], ['c985', 'fund health', 'third_person']]);
+  const simNow = (await (await fetch(`${BASE}/api/city/town.json`)).json()).sim;
+  ok(typeof simNow.treasury === 'number', 'FUND is only for the mayor and needs treasury (no crash with a small treasury)', simNow.treasury);
 
   console.log('\nDMs (after App Review)');
   const dm = (sender, text) => {

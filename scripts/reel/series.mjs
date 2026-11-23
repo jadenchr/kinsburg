@@ -131,9 +131,49 @@ export function openCall(sim, now = Date.now()) {
 }
 
 /** Lines to slot in above the MOVE IN line; empty when there is no town data. */
-export function simLines(sim, city, now = Date.now()) {
-  if (!sim || typeof sim !== 'object' || !(Array.isArray(sim.recent) || Array.isArray(sim.open))) return [];
-  return [...heroLines(sim, city, now), 'Firefighters, police, doctors: comment RESPOND when the city needs you.', openCall(sim, now)].filter(Boolean);
+export function simLines(sim, city, now = Date.now(), politics = null) {
+  const hasSim = sim && typeof sim === 'object' && (Array.isArray(sim.recent) || Array.isArray(sim.open));
+  const pol = politicsLine(politics?.politics, politics?.polls ?? [], !!politics?.showMayor);
+  if (!hasSim) return pol ? [pol] : [];
+  return [...heroLines(sim, city, now), pol, 'Firefighters, police, doctors: comment RESPOND when the city needs you.', openCall(sim, now)].filter(Boolean);
+}
+
+const plain = (h) => String(h ?? '').replace(/^@+/, '').trim();
+
+/**
+ * At most one politics line, or '' (missing or old-format data). Priority: nominations (or recall),
+ * voting, protest at half the threshold or more, then a quiet "Mayor X has a Y% approval rating."
+ * (only when `showMayor` is true, so it does not run every day). Plain names, no @-tags.
+ */
+export function politicsLine(pol, polls = [], showMayor = false) {
+  try {
+    if (!pol || typeof pol !== 'object') return '';
+    const el = pol.election;
+    if (el && el.phase === 'nominations') {
+      return el.recall
+        ? 'Enough residents protested: recall election! Comment RUN FOR MAYOR to stand.'
+        : 'Kinsburg needs a mayor: comment RUN FOR MAYOR to stand.';
+    }
+    if (el && el.phase === 'voting') {
+      const poll = (Array.isArray(polls) ? polls : []).find((p) => p && p.id === el.pollId);
+      const opts = (Array.isArray(poll?.options) ? poll.options : []).filter((o) => o && o.label).map((o) => ({ name: plain(o.label), votes: Number(o.votes) || 0 }));
+      let line = 'Election day: vote for mayor by commenting VOTE and their name.';
+      const names = (opts.length ? opts.map((o) => o.name) : (Array.isArray(el.candidates) ? el.candidates.map(plain) : [])).filter(Boolean);
+      if (names.length) line += ` Running: ${nameList(names, names.length)}.`;
+      const top = [...opts].sort((a, b) => b.votes - a.votes)[0];
+      if (top && top.votes > 0 && opts.filter((o) => o.votes === top.votes).length === 1) line += ` ${top.name} leads with ${n(top.votes)} ${top.votes === 1 ? 'vote' : 'votes'}.`;
+      return line;
+    }
+    const pr = pol.protest;
+    if (pr && pr.threshold > 0 && pr.count > 0 && pr.count * 2 >= pr.threshold && pol.mayor) {
+      return `Some residents want a new mayor: ${n(pr.count)} of ${n(pr.threshold)} protests needed for a recall.`;
+    }
+    const m = pol.mayor;
+    if (showMayor && m?.handle && Number.isFinite(Number(m.approval))) return `Mayor ${plain(m.handle)} has a ${Math.round(Number(m.approval))}% approval rating.`;
+  } catch {
+    /* old-format politics data: no line */
+  }
+  return '';
 }
 
 const article = (w) => (/^[aeiou]/i.test(w) ? 'An' : 'A');
@@ -151,12 +191,13 @@ export const MAX_CAPTION = 2200;
 export const MAX_HASHTAGS = 5;
 
 /** Build the final caption text and check Instagram's limits. */
-export function buildCaption(seriesId, stats, sim = null, now = Date.now()) {
+export function buildCaption(seriesId, stats, sim = null, now = Date.now(), politics = null) {
   const series = SERIES[seriesId];
   if (!series) throw new Error(`Unknown series "${seriesId}". Known: ${Object.keys(SERIES).join(', ')}`);
   const lines = series.caption(stats).filter(Boolean);
   // shout-outs go above the closing MOVE IN line, which stays last
-  const extra = simLines(sim, stats.city, now);
+  // `politics` is { politics, polls } from town.json (anything else is ignored)
+  const extra = simLines(sim, stats.city, now, { politics: politics?.politics, polls: politics?.polls, showMayor: seriesId === 'resident-of-the-day' });
   if (extra.length) lines.splice(Math.max(0, lines.length - 1), 0, ...extra);
   const body = lines.join(' ');
   const tags = series.hashtags.slice(0, MAX_HASHTAGS);

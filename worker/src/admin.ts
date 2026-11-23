@@ -19,6 +19,7 @@ import { townAdmin } from './town';
 import { castAdmin } from './cast';
 import { lifeAdmin } from './life';
 import { simAdmin } from './sim';
+import { politicsAdmin } from './politics';
 
 export async function handleAdmin(req: Request, env: Env, path: string): Promise<Response> {
   if (!env.ADMIN_TOKEN) return json({ error: 'admin disabled (set ADMIN_TOKEN)' }, 503);
@@ -27,6 +28,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
 
   if (req.method === 'GET' && path === '/admin/stats') return stats(env);
   if (req.method === 'GET' && path === '/admin/sim') return (await simAdmin(env, req, path, null))!;
+  if (req.method === 'GET' && path === '/admin/announcements') return (await politicsAdmin(env, req, path, null))!;
   if (req.method === 'GET' && path === '/admin/cast') return castAdmin(env, req, null);
   if (req.method === 'PUT' && path.startsWith('/admin/media/')) return putMedia(req, env, path);
   if (req.method !== 'POST') return json({ error: 'not found' }, 404);
@@ -43,6 +45,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
   if (life) return life;
   const sim = await simAdmin(env, req, path, body);
   if (sim) return sim;
+  const politics = await politicsAdmin(env, req, path, body);
+  if (politics) return politics;
   const town = await townAdmin(env, path, body);
   if (town) return town;
 

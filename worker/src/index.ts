@@ -14,6 +14,7 @@ import { getManifest, getShardBodies } from './city';
 import { type Env, json, log, packSize } from './env';
 import { handleInstagramWebhook, pollComments, refreshToken } from './instagram';
 import { simTick } from './sim';
+import { flushAnnouncements, politicsTick } from './politics';
 import { handleStripeWebhook } from './stripe';
 import { serveMedia } from './media';
 import { getTown } from './town';
@@ -109,10 +110,12 @@ export default {
     }
     // the city simulation steps on the 15-minute cron, even when Instagram is unreachable
     if (controller.cron !== '41 3 * * 1') {
-      try {
-        await simTick(env);
-      } catch (err) {
-        log('sim_failed', { error: String(err) });
+      for (const [name, step] of [['sim', () => simTick(env)], ['politics', () => politicsTick(env)], ['announce', () => flushAnnouncements(env)]] as const) {
+        try {
+          await step();
+        } catch (err) {
+          log(`${name}_failed`, { error: String(err) });
+        }
       }
     }
   },

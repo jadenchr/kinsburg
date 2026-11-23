@@ -39,7 +39,7 @@ import { dirname, join, resolve, extname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { parseArgs, run, sleep, probe, rgba, strHash, ambientArgs } from './lib.mjs';
-import { SERIES, buildCaption, seriesForDate, recentHeroes } from './series.mjs';
+import { SERIES, buildCaption, seriesForDate, recentHeroes, politicsLine } from './series.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = parseArgs();
@@ -196,20 +196,23 @@ html,body{margin:0;width:${W}px;height:${H}px;background:transparent;overflow:hi
   }
 }
 
-/** Town data for the hero shout-outs. Never throws: returns its `sim` block or null. */
-async function loadSim(base) {
+/** Town data for the hero shout-outs and politics line. Never throws: { sim, politics, polls } (each may be null). */
+async function loadTown(base) {
   const urls = BASE ? [`${base}/api/city/town.json`, `${base}/town.json`] : [`${base}/town.json`];
   for (const u of urls) {
     try {
       const r = await fetch(u, { signal: AbortSignal.timeout(10_000) });
       if (!r.ok) continue;
-      const sim = (await r.json())?.sim;
-      if (sim && typeof sim === 'object') return sim;
+      const j = await r.json();
+      const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+      const sim = obj(j?.sim);
+      const politics = obj(j?.politics);
+      if (sim || politics) return { sim, politics, polls: Array.isArray(j?.polls) ? j.polls : [] };
     } catch {
-      /* missing or old-format town data: no shout-outs */
+      /* missing or old-format town data: no shout-outs or politics */
     }
   }
-  return null;
+  return { sim: null, politics: null, polls: [] };
 }
 
 async function main() {
@@ -220,8 +223,10 @@ async function main() {
   cleanup.push(async () => rmSync(tmp, { recursive: true, force: true }));
 
   const base = await ensureServer();
-  const sim = args.heroes === false ? null : await loadSim(base);
+  const town = args.heroes === false ? { sim: null, politics: null, polls: [] } : await loadTown(base);
+  const sim = town.sim;
   const heroes = recentHeroes(sim);
+  log(`politics: ${politicsLine(town.politics, town.polls, true) || 'none'}`);
   log(sim ? `town data: ${heroes.length} resolved incident(s) in the last 26 h, ${sim.open?.length ?? 0} open` : 'town data: none (no hero shout-outs)');
   // the plain "Day N" series flies to the latest rescued house when no --focus is given
   const heroFocus = !FOCUS && SERIES_ID === 'day' ? heroes.find((i) => i.target)?.target ?? '' : '';
@@ -274,7 +279,7 @@ async function main() {
   const series = SERIES[SERIES_ID];
   const title = typeof args.title === 'string' ? fill(args.title) : series.title(cs);
   const subtitle = typeof args.subtitle === 'string' ? fill(args.subtitle) : args.subtitle === false ? '' : series.subtitle(cs);
-  const caption = buildCaption(SERIES_ID, cs, sim);
+  const caption = buildCaption(SERIES_ID, cs, sim, Date.now(), town);
   const overlayPng = join(tmp, 'overlay.png');
   const font = await renderOverlay(browser, title, subtitle, colors, overlayPng);
   log(`overlay "${title}" / "${subtitle}" (font: ${font})`);

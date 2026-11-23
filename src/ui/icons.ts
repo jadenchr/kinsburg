@@ -19,5 +19,6 @@ export const ICONS = {
   paw: svg('<circle cx="12" cy="15.5" r="3.6" fill="currentColor" stroke="none"/><circle cx="6.5" cy="10.5" r="1.8" fill="currentColor" stroke="none"/><circle cx="9.8" cy="6.8" r="1.8" fill="currentColor" stroke="none"/><circle cx="14.2" cy="6.8" r="1.8" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r="1.8" fill="currentColor" stroke="none"/>'),
   people: svg('<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5M15.5 5.2a3.2 3.2 0 0 1 0 6M17.2 14.2c1.8.6 3 2.2 3.3 4.8"/>'),
   coin: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M14.6 9.6c-.5-.8-1.4-1.1-2.6-1.1-1.5 0-2.4.7-2.4 1.8 0 2.5 5.2 1.2 5.2 3.7 0 1.100-1 1.800-2.700 1.800-1.200 0-2.200-.4-2.800-1.300"/>'),
+  crown: svg('<path d="M4 18h16M4.5 16 3 7l5 4 4-6 4 6 5-4-1.5 9Z" fill="currentColor"/>', 14),
   roof: svg('<path d="M3 12 12 4l9 8M6 10v9h12v-9" />', 14),
 } as const;

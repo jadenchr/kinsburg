@@ -22,6 +22,8 @@ export interface Env {
   IG_REPLY_ENABLED: string;
   /** "false" stops incidents starting on their own (tests; admin can still start them) */
   SIM_RANDOM_INCIDENTS?: string;
+  /** "false" stops @kinsburgtown announcing calls and elections under its latest post */
+  IG_CALLS_ENABLED?: string;
   IG_REPLY_MAX_PER_RUN: string;
   IG_REPLY_MAX_PER_DAY?: string;
   /** "true" after App Review: join / move out by DM, with the follower badge */

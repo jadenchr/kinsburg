@@ -20,6 +20,7 @@ import {
 } from '../../shared/sim.mjs';
 import { RESIDENT_COLS, checkHandle, eventStmt, toRow, writeSnapshots } from './city';
 import { type Env, json, log } from './env';
+import { announceStmt } from './politics';
 import type { IgComment } from './instagram';
 
 export interface SimState {
@@ -51,12 +52,12 @@ interface IncidentRow {
   cause: number | null;
 }
 
-async function getState(env: Env): Promise<SimState> {
+export async function getState(env: Env): Promise<SimState> {
   const r = await env.DB.prepare(`SELECT value FROM meta WHERE key = 'sim'`).first<{ value: string }>();
   if (!r) return { ...START };
   try { return { ...START, ...JSON.parse(r.value) }; } catch { return { ...START }; }
 }
-const putState = (env: Env, s: SimState) =>
+export const putState = (env: Env, s: SimState) =>
   env.DB.prepare(`INSERT INTO meta (key, value) VALUES ('sim', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(JSON.stringify(s));
 
 function applyOutcome(s: SimState, kind: IncidentKind, won: boolean) {
@@ -81,8 +82,20 @@ async function snapshot(env: Env, handles: string[], extra: D1PreparedStatement[
 
 // ---------------------------------------------------------------- tick
 
+const EMOJI: Record<IncidentKind, string> = { fire: '🔥', burglary: '🚨', crash: '🚗', flu: '🤧', lostpet: '🐾', exam: '📚', repair: '🔨' };
+const plural = (job: string, n: number) => (n === 1 ? job.toLowerCase() : job === 'Police officer' ? 'police officers' : job.toLowerCase() + 's');
+
+/** "🔥 Kitchen fire at @sam's house! Firefighters: comment RESPOND (2 needed)." */
+export function callText(kind: IncidentKind, target: string | null, needed: number) {
+  const d = INCIDENTS[kind];
+  const where = target ? ` at @${target}'s house` : kind === 'flu' ? ' at Kinsburg General' : kind === 'exam' ? ' at Kinsburg Elementary' : '';
+  const jobs = d.jobs.map((j) => plural(j, 2));
+  const who = jobs.length > 1 ? `${jobs.slice(0, -1).join(', ')} or ${jobs[jobs.length - 1]}` : jobs[0];
+  return `${EMOJI[kind]} ${d.label}${where}! ${who[0].toUpperCase() + who.slice(1)}: comment RESPOND (${needed} needed).`;
+}
+
 /** Start an incident (also used by the admin endpoint). Picks a target house when needed. */
-export async function startIncident(env: Env, kind: IncidentKind, opts: { target?: string | null; hours?: number; now?: number; cause?: number; residents?: number } = {}) {
+export async function startIncident(env: Env, kind: IncidentKind, opts: { target?: string | null; hours?: number; now?: number; cause?: number; residents?: number; quiet?: boolean } = {}) {
   const db = env.DB;
   const now = opts.now ?? Date.now();
   const def = INCIDENTS[kind];
@@ -102,7 +115,9 @@ export async function startIncident(env: Env, kind: IncidentKind, opts: { target
     .prepare('INSERT INTO incidents (kind, target, needed, created_at, deadline, cause) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id')
     .bind(kind, target, needed, iso(now), deadline, opts.cause ?? null)
     .first<{ id: number }>();
-  await db.batch([eventStmt(env, 'incident', target, { id: row?.id, kind, needed })]);
+  const stmts = [eventStmt(env, 'incident', target, { id: row?.id, kind, needed })];
+  if (!opts.quiet) stmts.push(announceStmt(env, callText(kind, target, needed)));
+  await db.batch(stmts);
   return { id: row!.id, kind, target, needed, deadline };
 }
 

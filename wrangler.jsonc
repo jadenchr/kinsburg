@@ -52,6 +52,7 @@
     "META_APP_ID": "2198331804450174",
     "IG_MEDIA_LIMIT": "10",
     "IG_REPLY_ENABLED": "true",
+    "IG_CALLS_ENABLED": "true", // announce calls for help and elections under the latest post
     "IG_REPLY_MAX_PER_RUN": "2", // a human pace; Instagram blocks bursts of replies
     "IG_REPLY_MAX_PER_DAY": "80",
     // Turn these on only after Meta grants Advanced Access (App Review):

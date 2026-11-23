@@ -6,6 +6,7 @@ import { LEVEL_AT, levelFor } from '../../shared/residents-format.mjs';
 import type { Row } from '../../shared/residents-format.mjs';
 import { RESIDENT_COLS, checkHandle, eventStmt, joinMany, toRow, writeSnapshots } from './city';
 import { getSim } from './sim';
+import { getPolitics } from './politics';
 import { type Env, json, log } from './env';
 import type { IgClient, IgComment } from './instagram';
 
@@ -93,6 +94,8 @@ function publicPoll(p: PollRow, counts: Record<string, number>) {
     total,
     options: options.map((o) => ({ ...o, votes: counts[o.key] ?? 0 })),
     result: p.result ? JSON.parse(p.result) : null,
+    /** true for automatic elections: VOTE comments on any post count (no dedicated vote post) */
+    anywhere: !p.media_id,
   };
 }
 
@@ -163,8 +166,11 @@ export async function processTownComments(env: Env, comments: IgComment[]) {
   }
   for (const r of await db.batch<{ handle: string; engagement: number; level: number }>(rreads)) for (const x of r.results) residents.set(x.handle, x);
 
-  const polls = (await db.prepare(`SELECT * FROM polls WHERE status = 'open' AND media_id IS NOT NULL AND closes_at > ?1`).bind(nowIso()).all<PollRow>()).results;
-  const pollByMedia = new Map(polls.map((p) => [p.media_id!, { id: p.id, options: JSON.parse(p.options) as PollOption[] }]));
+  const polls = (await db.prepare(`SELECT * FROM polls WHERE status = 'open' AND closes_at > ?1`).bind(nowIso()).all<PollRow>()).results;
+  const pollByMedia = new Map(polls.filter((p) => p.media_id).map((p) => [p.media_id!, { id: p.id, options: JSON.parse(p.options) as PollOption[] }]));
+  // Town-wide polls (automatic elections) have no post: a comment on any post that starts with
+  // VOTE counts ("VOTE @name", "vote B").
+  const anyPost = polls.filter((p) => !p.media_id).map((p) => ({ id: p.id, options: JSON.parse(p.options) as PollOption[] }));
 
   const stmts: D1PreparedStatement[] = fresh.map((c) =>
     db.prepare('INSERT INTO seen_comments (comment_id, handle) VALUES (?1, ?2) ON CONFLICT(comment_id) DO NOTHING').bind(c.id, c.username.toLowerCase()),
@@ -179,8 +185,14 @@ export async function processTownComments(env: Env, comments: IgComment[]) {
     report.counted += cs.length;
     if (level !== r.level) levelChanged.push(handle);
     for (const c of cs) {
-      const poll = pollByMedia.get(c.mediaId);
-      const option = poll && parseVote(c.text, poll.options);
+      let poll = pollByMedia.get(c.mediaId);
+      let option = poll && parseVote(c.text, poll.options);
+      if (!option && /^\s*vote\b/i.test(c.text)) {
+        for (const p of anyPost) {
+          const o = parseVote(c.text, p.options);
+          if (o) { poll = p; option = o; break; }
+        }
+      }
       if (poll && option) {
         stmts.push(db.prepare('INSERT INTO votes (poll_id, handle, option, comment_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(poll_id, handle) DO NOTHING').bind(poll.id, handle, option, c.id));
         report.votes++;
@@ -307,6 +319,7 @@ export async function getTown(env: Env) {
     levelAt: LEVEL_AT,
     account: env.CITY_ACCOUNT,
     sim,
+    politics: await getPolitics(env, sim.stats),
   };
 }
 
