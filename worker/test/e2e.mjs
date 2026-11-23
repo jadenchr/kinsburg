@@ -430,6 +430,9 @@ try {
   pv = await pol();
   ok(pv.election?.recall === true && pv.election.phase === 'nominations', 'enough protesters force a recall election', pv.election);
   ok((await anns()).some((t) => t.includes('recall election')), 'the recall is announced');
+  const annRows = await (await admin('/admin/announcements')).json();
+  const nomRow = annRows.find((a) => a.text.includes('recall election'));
+  ok(!!nomRow?.expires_at && Date.parse(nomRow.expires_at) - Date.parse(nomRow.created_at) >= 20 * 3600_000, 'an election announcement stays valid until nominations close (survives a reply pause)', nomRow);
   r = await admin('/admin/coins', { handle: 'combo.person', add: 1 });
   await castHook([['c984', 'FUND HEALTH', 'combo.person'], ['c985', 'fund health', 'third_person']]);
   const simNow = (await (await fetch(`${BASE}/api/city/town.json`)).json()).sim;

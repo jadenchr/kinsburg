@@ -50,8 +50,9 @@ const delMeta = (env: Env, key: string) => env.DB.prepare('DELETE FROM meta WHER
 
 export const termOf = (m: Mayor) => `${m.handle}:${m.sinceDay}`;
 
-/** Queue something for @kinsburgtown to say under its latest post. */
-export const announceStmt = (env: Env, text: string) => env.DB.prepare('INSERT INTO announcements (text) VALUES (?1)').bind(text.slice(0, 300));
+/** Queue something for @kinsburgtown to say under its latest post, worth posting until `expiresAt`. */
+export const announceStmt = (env: Env, text: string, expiresAt?: string) =>
+  env.DB.prepare('INSERT INTO announcements (text, expires_at) VALUES (?1, ?2)').bind(text.slice(0, 300), expiresAt ?? iso(Date.now() + 12 * 3_600_000));
 
 async function activeResidents(env: Env, now: number): Promise<number> {
   const r = await env.DB.prepare(
@@ -73,7 +74,7 @@ function startNominations(env: Env, now: number, recall: boolean, why: string) {
   const text = recall
     ? `📣 Enough residents protested: Kinsburg holds a recall election! Want the job? Comment RUN FOR MAYOR in the next ${days * 24} hours.`
     : `🗳️ Kinsburg needs a mayor! Want the job? Comment RUN FOR MAYOR in the next ${days} days. Then everyone votes.`;
-  return { e, stmts: [setMeta(env, 'election', e), eventStmt(env, recall ? 'recall_started' : 'nominations_open', null, { id: e.id, why }), announceStmt(env, text)] };
+  return { e, stmts: [setMeta(env, 'election', e), eventStmt(env, recall ? 'recall_started' : 'nominations_open', null, { id: e.id, why }), announceStmt(env, text, e.nomClosesAt)] };
 }
 
 /** One politics step: open/close nominations and votes, check protests. */
@@ -90,7 +91,7 @@ export async function politicsTick(env: Env, now = Date.now()) {
     if (!after || after.status === 'closed') {
       const winner = after?.result ? (JSON.parse(after.result).label as string | null) : null;
       const stmts = [delMeta(env, 'election'), setMeta(env, 'election_cooldown', iso(now + DAY))];
-      if (winner) stmts.push(announceStmt(env, `🎉 ${winner} is the new mayor of Kinsburg! Think they're not doing the job? Comment PROTEST.`));
+      if (winner) stmts.push(announceStmt(env, `🎉 ${winner} is the new mayor of Kinsburg! Think they're not doing the job? Comment PROTEST.`, iso(now + 3 * DAY)));
       await db.batch(stmts);
       report.electionClosed = winner ?? 'no votes';
     }
@@ -109,7 +110,7 @@ export async function politicsTick(env: Env, now = Date.now()) {
         db.prepare('INSERT INTO polls (id, kind, question, options, media_id, closes_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5) ON CONFLICT(id) DO NOTHING').bind(pollId, 'election', question, JSON.stringify(options), iso(now + VOTING_DAYS * DAY)),
         setMeta(env, 'election', { ...election, phase: 'voting', pollId } satisfies Election),
         eventStmt(env, 'voting_open', null, { id: election.id, candidates: cands.map((c) => c.handle) }),
-        announceStmt(env, `🗳️ Voting is open! Candidates: ${names}. Comment VOTE and their @ on any post. One vote each, ${VOTING_DAYS} days.`),
+        announceStmt(env, `🗳️ Voting is open! Candidates: ${names}. Comment VOTE and their @ on any post. One vote each, ${VOTING_DAYS} days.`, iso(now + VOTING_DAYS * DAY)),
       ]);
       report.votingOpen = cands.map((c) => c.handle);
     } else if (cands.length === 1) {
@@ -118,7 +119,7 @@ export async function politicsTick(env: Env, now = Date.now()) {
         setMeta(env, 'mayor', { handle: h, sinceDay: day, pollId: election.id } satisfies Mayor),
         delMeta(env, 'election'),
         eventStmt(env, 'mayor_unopposed', h, { id: election.id }),
-        announceStmt(env, `🎉 @${h} ran unopposed and is the new mayor of Kinsburg!`),
+        announceStmt(env, `🎉 @${h} ran unopposed and is the new mayor of Kinsburg!`, iso(now + 3 * DAY)),
       ]);
       report.unopposed = h;
     } else if (election.recall || (election.extended ?? 0) >= 2) {
@@ -127,7 +128,7 @@ export async function politicsTick(env: Env, now = Date.now()) {
       report.empty = election.id;
     } else {
       const e = { ...election, nomClosesAt: iso(now + NOMINATION_DAYS * DAY), extended: (election.extended ?? 0) + 1 };
-      await db.batch([setMeta(env, 'election', e), announceStmt(env, `🗳️ Still no candidates for mayor. Comment RUN FOR MAYOR to stand. ${NOMINATION_DAYS} more days.`)]);
+      await db.batch([setMeta(env, 'election', e), announceStmt(env, `🗳️ Still no candidates for mayor. Comment RUN FOR MAYOR to stand. ${NOMINATION_DAYS} more days.`, e.nomClosesAt)]);
       report.extended = e.nomClosesAt;
     }
     return report;
@@ -228,11 +229,12 @@ export async function processPoliticsComments(env: Env, comments: IgComment[], n
 /**
  * Post the oldest queued announcement as a comment under @kinsburgtown's latest post, at most one
  * per run and only within the reply allowance (shared with welcome replies, so the account keeps a
- * human pace). Announcements older than 12 hours are skipped: news goes stale.
+ * human pace). Announcements past their own expiry (an incident's deadline, the end of a vote) are
+ * skipped: news goes stale.
  */
 export async function flushAnnouncements(env: Env, now = Date.now()) {
   const db = env.DB;
-  await db.prepare(`UPDATE announcements SET status = 'skipped' WHERE status = 'queued' AND created_at < ?1`).bind(iso(now - 12 * 3_600_000)).run();
+  await db.prepare(`UPDATE announcements SET status = 'skipped' WHERE status = 'queued' AND expires_at < ?1`).bind(iso(now)).run();
   if (env.IG_CALLS_ENABLED === 'false') return { posted: 0, reason: 'disabled' };
   const next = await db.prepare(`SELECT id, text FROM announcements WHERE status = 'queued' ORDER BY id LIMIT 1`).first<{ id: number; text: string }>();
   if (!next) return { posted: 0 };

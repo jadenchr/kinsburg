@@ -116,7 +116,7 @@ export async function startIncident(env: Env, kind: IncidentKind, opts: { target
     .bind(kind, target, needed, iso(now), deadline, opts.cause ?? null)
     .first<{ id: number }>();
   const stmts = [eventStmt(env, 'incident', target, { id: row?.id, kind, needed })];
-  if (!opts.quiet) stmts.push(announceStmt(env, callText(kind, target, needed)));
+  if (!opts.quiet) stmts.push(announceStmt(env, callText(kind, target, needed), deadline));
   await db.batch(stmts);
   return { id: row!.id, kind, target, needed, deadline };
 }
