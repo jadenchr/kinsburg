@@ -22,6 +22,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { ambientArgs, parseArgs, probe, run, sleep } from './lib.mjs';
+import { BUILD_BY_KIND } from '../../shared/builds.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = parseArgs();
@@ -32,6 +33,7 @@ const FOLDER = {
   A: 'launch/launch-01-yours-is-still-dark', B: 'launch/launch-02-comment-two-words', C: 'launch/launch-03-the-city-picks-your-job',
   D: 'launch/launch-04-house-number-4-is-empty', T1: 'in-this-town/in-this-town-01-rules-of-kinsburg', L1: 'live/live-01-lets-build-this-city',
   T2: 'in-this-town/in-this-town-02-six-seven', T3: 'in-this-town/in-this-town-03-the-update',
+  // E (daily episodes) picks its own folder: episodes/episode-NN
 };
 const ONLY = args.only ? String(args.only).toUpperCase() : null;
 const BASE = (args.url ?? process.env.KINSBURG_URL ?? '').replace(/\/+$/, '');
@@ -87,6 +89,31 @@ async function narrate(tmp, id, lines, character) {
   const k = 1 / character.speed, sc = (x) => Math.round(x * k * 1000) / 1000;
   return { wav, duration: sc(t.duration), lines: t.lines.map((l) => ({ ...l, start: sc(l.start), end: sc(l.end), words: l.words.map((w) => ({ ...w, start: sc(w.start), end: sc(w.end) })) })) };
 }
+/** Numbers as words for the narration: 190500 -> "a hundred and ninety thousand five hundred". */
+function sayNumber(n) {
+  n = Math.round(n);
+  const ones = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  const under100 = (k) => (k < 20 ? ones[k] : tens[Math.floor(k / 10)] + (k % 10 ? '-' + ones[k % 10] : ''));
+  // lead: the number starts the phrase, so 100 reads "a hundred"
+  const under1000 = (k, lead) => {
+    const h = Math.floor(k / 100), r = k % 100;
+    if (!h) return under100(r);
+    const head = h === 1 ? (lead ? 'a hundred' : 'one hundred') : `${ones[h]} hundred`;
+    return head + (r ? ' and ' + under100(r) : '');
+  };
+  if (n < 0) return 'minus ' + sayNumber(-n);
+  if (n < 1000) return under1000(n, true);
+  if (n < 1e6) {
+    const th = Math.floor(n / 1000), r = n % 1000;
+    return `${under1000(th, true)} thousand${r ? (r < 100 ? ' and ' : ' ') + under1000(r, false) : ''}`;
+  }
+  const m = Math.floor(n / 1e6), r = n % 1e6;
+  return `${under1000(m, true)} million${r ? ' ' + sayNumber(r) : ''}`;
+}
+const sayMoney = (n) => `${sayNumber(n)} dollars`;
+const usd = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+
 /** Jadie (jadiedevs): Kokoro am_fenrir, +5 semitones, 1.22× (pipeline/cast.json, "Voice B"). */
 const JADIE_VOICE = { voice: 'am_fenrir', semitones: 5, speed: 1.22 };
 
@@ -114,6 +141,33 @@ const CSS = `
 .sign{background:#f6d468;border:10px solid #2b2118;border-radius:18px;padding:26px 52px 30px;text-align:center;transform:rotate(-2deg);box-shadow:0 14px 0 rgba(11,20,48,.35)}
 .sign small{display:block;color:#c8352b;font-size:56px;font-weight:900;letter-spacing:.02em;text-transform:uppercase;line-height:1.05}
 .sign b{display:block;color:#1d1b1a;font-size:104px;font-weight:900;line-height:1;text-transform:uppercase;margin-top:6px}
+.ep-hud{position:absolute;left:60px;right:60px;top:${L.hudTop}px;display:flex;gap:16px;justify-content:center}
+.ep-chip{background:rgba(11,20,48,.82);color:${C.white};border-radius:18px;padding:12px 22px;display:flex;flex-direction:column;align-items:flex-start;min-width:250px}
+.ep-chip span{font-size:22px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.ep-chip b{font-size:44px;font-weight:900;font-variant-numeric:tabular-nums;color:${C.gold};line-height:1.05}
+.ep-mid{position:absolute;left:60px;right:60px;top:430px;display:flex;flex-direction:column;align-items:center;gap:18px}
+.ep-banner{background:#1d2a52;color:${C.white};border:6px solid ${C.white};border-radius:20px;padding:16px 44px;font-size:76px;font-weight:900;letter-spacing:.02em;text-transform:uppercase;box-shadow:0 10px 0 rgba(11,20,48,.35)}
+.ep-pill{background:#d9473a;color:${C.white};border-radius:999px;padding:8px 30px;font-size:38px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;margin-top:-30px}
+.ep-card{background:rgba(11,20,48,.88);color:${C.white};border-radius:26px;padding:26px 40px;min-width:640px;box-shadow:0 12px 0 rgba(11,20,48,.3)}
+.ep-card h3{margin:0 0 10px;font-size:30px;letter-spacing:.08em;text-transform:uppercase;color:${C.gold};text-align:center}
+.ep-row{display:flex;justify-content:space-between;gap:30px;font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.35}
+.ep-row small{font-size:30px;font-weight:700;opacity:.75;align-self:center}
+.ep-row.plus b{color:#7fd38a}.ep-row.minus b{color:#ff8a7f}.ep-row.total{border-top:4px solid rgba(255,255,255,.4);margin-top:8px;padding-top:8px}.ep-row.total b{color:${C.gold};font-size:58px}
+.ep-vs{display:flex;align-items:center;gap:34px;font-size:120px;font-weight:900;font-variant-numeric:tabular-nums}
+.ep-vs s{opacity:.55;text-decoration-thickness:8px}.ep-vs i{font-style:normal;font-size:80px;color:${C.gold}}
+.ep-vs-l{display:flex;justify-content:space-around;width:100%;font-size:26px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.7;margin-top:-8px}
+.ep-wall{position:absolute;left:40px;right:40px;top:340px;display:flex;flex-direction:column;gap:14px;align-items:center}
+.ep-c{display:flex;align-items:center;gap:16px;background:${C.white};color:${C.ink};border-radius:20px;padding:12px 22px;width:840px;box-shadow:0 6px 0 rgba(11,20,48,.25);font-size:32px}
+.ep-c i{width:52px;height:52px;border-radius:50%;background:#4f6d8f;flex:none}
+.ep-c div{display:flex;flex-direction:column;flex:1;min-width:0}.ep-c div b{font-size:26px;font-weight:800;opacity:.75}
+.ep-c div span{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-c em{font-style:normal;font-weight:900;color:#d9473a;font-size:30px;flex:none}
+.ep-c.dim{opacity:.45;transform:scale(.96)}
+.ep-c.win{border:6px solid ${C.gold};transform:scale(1.06);box-shadow:0 10px 0 rgba(11,20,48,.3)}
+.ep-top{background:${C.gold};color:${C.ink};border-radius:14px;padding:6px 24px;font-size:40px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+.ep-tag{position:absolute;left:0;right:0;top:820px;display:flex;justify-content:center}
+.ep-tag div{background:${C.white};color:${C.ink};border:5px solid ${C.ink};border-radius:16px;padding:10px 26px;font-size:46px;font-weight:900;text-transform:uppercase}
+.ep-minus{position:absolute;left:0;right:0;top:700px;text-align:center;font-size:110px;font-weight:900;color:#e2574a;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 30px rgba(11,20,48,.5)}
 `;
 let ovPage;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -177,9 +231,10 @@ async function film(page, tmp, name, shot) {
 }
 
 /** Shots joined by dissolves (each shot starts at `at`), every overlay on the global timeline, narration over a quiet bed. */
-async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, loop = false }) {
-  const dir = join(OUT, FOLDER[id] ?? `drafts/${id}`);
-  const name = `kinsburg-${(FOLDER[id] ?? id).split('/').pop()}`;
+async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, loop = false, folder, rewriteCaption = false }) {
+  const where = folder ?? FOLDER[id] ?? `drafts/${id}`;
+  const dir = join(OUT, where);
+  const name = `kinsburg-${where.split('/').pop()}`;
   mkdirSync(dir, { recursive: true });
   const inputs = shots.flatMap((s) => ['-i', s.file]);
   const vchain = [];
@@ -209,7 +264,8 @@ async function finish(tmp, id, { shots, overlays, voice, duration, caption, cove
       vchain.push(`[${last}][dm${k}]overlay=0:0:enable='between(t,${o.from},${o.to})'[d${k}]`);
       last = `d${k}`;
     }
-    const pos = o.card ? `x=(W-w)/2:y=${o.cardTop ?? L.cardTop}` : 'x=0:y=0';
+    // rise: drifts up this many px a second from `from` ("-$125,000" flying off)
+    const pos = o.card ? `x=(W-w)/2:y=${o.cardTop ?? L.cardTop}` : o.rise ? `x=0:y='-(t-${o.from})*${o.rise}'` : 'x=0:y=0';
     vchain.push(`[${last}][ov${k}]overlay=${pos}:enable='between(t,${o.from},${o.to})':eof_action=pass[o${k}]`);
     last = `o${k}`;
     k++;
@@ -236,7 +292,8 @@ async function finish(tmp, id, { shots, overlays, voice, duration, caption, cove
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-maxrate', '8M', '-bufsize', '16M', '-pix_fmt', 'yuv420p', '-color_range', 'tv',
     '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', mp4]);
   const capFile = join(dir, `${name}.txt`);
-  if (!existsSync(capFile)) writeFileSync(capFile, caption + '\n');
+  // hand-written captions are kept; automatic ones (daily episodes) are rewritten from the day's data
+  if (rewriteCaption || !existsSync(capFile)) writeFileSync(capFile, caption + '\n');
   else log(`kept the caption in ${relative(ROOT, capFile)}; check its numbers against this render. Generated caption:\n${caption}`);
   if (coverHtml) {
     // a cover with its own title (the grid shows the cover, not the first frame)
@@ -273,10 +330,12 @@ const thumbHtml = (above, big, below) => `<div style="position:absolute;left:60p
 </div>`;
 
 // ── shared pieces ────────────────────────────────────────────────────────────
-async function common(tmp, id, voice, right, { title = 'live city', words = 3 } = {}) {
+async function common(tmp, id, voice, right, { title = 'live city', words = 3, hud: withHud = true } = {}) {
   const overlays = [];
-  const hud = await png(join(tmp, `${id}-hud.png`), `<div class="hud"><div class="chip"><i></i>Kinsburg <span>|</span> ${esc(title)}</div><div class="chip">${esc(right)}</div></div>`);
-  overlays.push({ png: hud, from: 0, to: 1e3, noFade: true });
+  if (withHud) {
+    const hud = await png(join(tmp, `${id}-hud.png`), `<div class="hud"><div class="chip"><i></i>Kinsburg <span>|</span> ${esc(title)}</div><div class="chip">${esc(right)}</div></div>`);
+    overlays.push({ png: hud, from: 0, to: 1e3, noFade: true });
+  }
   const cls = words === 1 ? 'word' : 'cap';
   for (const [i, c] of captionChunks(voice, words).entries()) overlays.push({ png: await png(join(tmp, `${id}-cap${i}.png`), captionHtml(c, cls)), from: c.start, to: c.end, noFade: true });
   return overlays;
@@ -875,6 +934,162 @@ async function reelT3({ tmp, page, R }) {
   return { trouble, call };
 }
 
+// ── Daily episodes: "Kinsburg · Episode N" (city cash, the comment wall, what got built) ──
+// Made entirely from the day's summary the 12:00 UTC build run records (town.json cityCash.today):
+// residents and followers yesterday -> today, the money that came in, the comment wall with real
+// handles, what the city bought (flying to each real build), what's left and what's next.
+const EP_START_DAY = 14; // the city day of episode 1
+// kinds newer than this copy of shared/builds.mjs still read well
+const EXTRA_KINDS = { university: { label: 'University', emoji: '🎓' } };
+const kindLabel = (k) => BUILD_BY_KIND[k]?.label ?? EXTRA_KINDS[k]?.label ?? k.charAt(0).toUpperCase() + k.slice(1);
+const kindEmoji = (k) => BUILD_BY_KIND[k]?.emoji ?? EXTRA_KINDS[k]?.emoji ?? '🏗️';
+const aOrAn = (w) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
+async function reelE({ tmp, page, R }) {
+  const town = await page.evaluate(() => fetch('/api/city/town.json').then((r) => r.json()));
+  const cc = town?.cityCash, T = cc?.today;
+  if (!T || !Array.isArray(T.wall)) throw new Error('no daily build run with episode data yet (it runs at 12:00 UTC)');
+  const N = Math.max(1, T.day - EP_START_DAY + 1), NN = String(N).padStart(2, '0');
+  const first = N === 1 || !T.prev;
+  const prevRes = T.prev?.residents ?? 3, nowRes = T.residents;
+  const inc = T.income ?? {};
+  const moveIns = inc.move_in?.n ?? 0, moveCash = inc.move_in?.amount ?? 0;
+  const followCash = inc.follows?.amount ?? 0, followers = Math.round(followCash / 1500);
+  const seed = inc.seed?.amount ?? 0, gift = inc.gift?.amount ?? 0, extra = inc.adjust?.amount ?? 0;
+  const startCash = T.prev?.after ?? 0;
+  const buys = [
+    ...T.built.map((b) => ({ ...b, label: kindLabel(b.kind), emoji: kindEmoji(b.kind), target: `build:${b.id}`, home: false, city: b.by === (town.account ?? 'kinsburgtown') })),
+    ...T.homes.map((h) => ({ ...h, label: h.kind === 'villa' ? 'Villa' : 'Skyscraper', emoji: h.kind === 'villa' ? '🏝️' : '🏙️', target: h.handle, home: true, by: h.handle })),
+  ];
+  const wait = T.waiting ? { ...T.waiting, label: T.waiting.type === 'home' ? (T.waiting.kind === 'villa' ? 'Villa' : 'Skyscraper') : kindLabel(T.waiting.kind) } : null;
+  const wall = T.wall.slice(0, 6);
+  const winner = buys.find((b) => !b.home && !b.city) ?? null;
+
+  // ── narration ──
+  const lines = [];
+  const L = (key, text, say, gap = 0.3) => lines.push({ key, text, say, gap });
+  L('title', `Kinsburg, episode ${N}.`, `Kinsburg, episode ${sayNumber(N)}.`, 0.25);
+  // not "live here": the voice reads that as "live music"; "live in this city" comes out right
+  if (first) L('people', `This city started with *3* people. Today, *${nowRes}* people live in this city.`, `This city started with three people. Today, ${sayNumber(nowRes)} people live in this city.`);
+  else L('people', `Yesterday, *${prevRes}* people lived here. Today, *${nowRes}*.`, `Yesterday, ${sayNumber(prevRes)} people lived here. Today, ${sayNumber(nowRes)}.`);
+  if (seed) L('money', `Every neighbour is worth *$1,500* to the city. That's *${usd(seed)}*.`, `Every neighbour is worth fifteen hundred dollars to the city. That's ${sayMoney(seed)}.`);
+  else L('money', `New neighbours and followers brought in *${usd(T.before - startCash)}*. So we have *${usd(T.before)}*.`, `New neighbours and followers brought in ${sayMoney(T.before - startCash)}. So we have ${sayMoney(T.before)}.`);
+  // only claim "a lot" when there really was a crowd of requests
+  if (gift) L('gift', `Then someone gave the city *${usd(gift)}*. Anonymously.`, `Then someone gave the city ${sayMoney(gift)}. Anonymously.`, 0.35);
+  if (wall.length >= 3) L('wall', 'You asked for a lot.', 'You asked for a lot.', 0.2);
+  if (winner) L('winner', `The top comment? *${aOrAn(winner.label)} ${winner.label.toLowerCase()}*.`, `The top comment? ${aOrAn(winner.label)} ${winner.label.toLowerCase()}.`);
+  buys.forEach((b, i) => {
+    const what = `${aOrAn(b.label)} ${b.label.toLowerCase()}`;
+    if (i === 0) L(`buy${i}`, `${what[0].toUpperCase() + what.slice(1)} costs *${usd(b.price)}*. Built.`, `${what} costs ${sayMoney(b.price)}. Built.`);
+    else L(`buy${i}`, `And ${what}, for *${usd(b.price)}*.`, `And ${what}, for ${sayMoney(b.price)}.`);
+  });
+  if (!buys.length && wait) L('cant', `${aOrAn(wait.label)[0].toUpperCase() + aOrAn(wait.label).slice(1)} ${wait.label.toLowerCase()} costs *${usd(wait.price)}*. We can't afford it yet.`, `${aOrAn(wait.label)} ${wait.label.toLowerCase()} costs ${sayMoney(wait.price)}. We can't afford it yet.`);
+  L('left', `That leaves *${usd(T.after)}*.`, `That leaves ${sayMoney(T.after)}.`, 0.25);
+  if (wait && buys.length) L('next', `Next, we're saving up for ${aOrAn(wait.label)} *${wait.label.toLowerCase()}*.`, `Next, we're saving up for ${aOrAn(wait.label)} ${wait.label.toLowerCase()}.`);
+  L('cta', 'Comment what we build next. The top comment gets built.', 'Comment what we build next. The top comment gets built.', 1.1);
+  const v = await narrate(tmp, `E${NN}`, lines.map(({ text, say, gap }) => ({ text, say, gap })), JADIE_VOICE);
+  const ls = v.lines, D = v.duration, xf = 0.3;
+  const at = (key) => ls[lines.findIndex((l) => l.key === key)];
+
+  // ── shots: one per beat ──
+  const beats = [];
+  const B = (keys, build) => { const idx = lines.findIndex((l) => keys.includes(l.key)); if (idx >= 0) beats.push({ idx, build }); };
+  const byNumber = [...R].sort((a, b) => a.number - b.number);
+  const newest = byNumber.slice(Math.max(1, prevRes)).slice(-40);
+  const home = { at: JADIE, dx: -36, dy: -18 };
+  const square = 'landmark:townhall';
+  B(['title'], (d, loc) => ({
+    keys: [{ t: 0, target: square, zoom: 1.0, y: 0.62 }, { t: d, target: square, zoom: 1.25, y: 0.62 }],
+    rings: newest.map((r, i) => ({ id: r.id, from: loc(at('people').start) + 0.3 + (i / Math.max(1, newest.length)) * 1.4 })),
+  }));
+  B(['money', 'gift'], (d) => ({
+    keys: [{ t: 0, target: 'actor:jadie', zoom: 8.6, y: 0.58 }, { t: d, target: 'actor:jadie', zoom: 9.0, y: 0.58 }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'point', face: 1, pet: 'dog' }, { t: d, ...home, pose: 'point', face: 1 }] }],
+  }));
+  B(['wall', 'winner'], (d) => ({ keys: [{ t: 0, target: square, zoom: 2.0, y: 0.6 }, { t: d, target: square, zoom: 2.3, y: 0.6 }] }));
+  buys.forEach((b, i) => B([`buy${i}`], (d) => ({
+    keys: [{ t: 0, target: b.target, zoom: b.home ? 5.0 : 3.6, y: 0.66 }, { t: d, target: b.target, zoom: b.home ? 5.6 : 4.2, y: 0.66 }],
+    rings: [{ id: b.target, from: 0.6 }],
+  })));
+  if (!buys.length) B(['cant'], (d) => ({ keys: [{ t: 0, target: square, zoom: 1.6, y: 0.6 }, { t: d, target: square, zoom: 1.9, y: 0.6 }] }));
+  const lastTarget = buys.length ? buys[buys.length - 1].target : square;
+  B(['left'], (d) => ({ keys: [{ t: 0, target: lastTarget, zoom: buys.length ? 4.2 : 1.9, y: 0.62 }, { t: Math.min(d, 2.4), target: square, zoom: 1.1, y: 0.6 }, { t: d, target: square, zoom: 1.05, y: 0.6 }] }));
+  B(['cta'], (d) => ({
+    keys: [{ t: 0, target: 'actor:jadie', zoom: 8.0, y: 0.58 }, { t: d, target: 'actor:jadie', zoom: 8.6, y: 0.58 }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'wave', pet: 'dog' }, { t: d, ...home, pose: 'wave' }] }],
+  }));
+  beats.sort((a, b) => a.idx - b.idx);
+  const cuts = beats.map((b, i) => (i === 0 ? 0 : ls[b.idx].start - 0.2));
+  cuts.push(D);
+  const shots = [];
+  for (const [i, bt] of beats.entries()) {
+    const from = cuts[i], to = cuts[i + 1];
+    const d = to - from + (i < beats.length - 1 ? xf : 0);
+    const loc = (x) => x - from;
+    const talk = ls.filter((l) => l.end > from && l.start < to).map((l) => ({ from: loc(l.start), to: loc(l.end) }));
+    const sc = bt.build(d, loc);
+    shots.push({ file: await film(page, tmp, `E${NN}-${i}`, { duration: d, ease: 'sine', hours: [{ t: 0, h: 21 }], ...sc, actors: (sc.actors ?? []).map((a) => ({ ...a, talk })) }), at: from });
+  }
+
+  // ── overlays ──
+  const overlays = await common(tmp, `E${NN}`, v, '', { words: 1, hud: false });
+  const hud = async (cash, people, k) => png(join(tmp, `E${NN}-hud${k}.png`), `<div class="ep-hud"><div class="ep-chip"><span>City cash</span><b>${usd(cash)}</b></div><div class="ep-chip"><span>Residents</span><b>${people.toLocaleString('en-US')}</b></div></div>`);
+  // the counters tick: yesterday's cash, then today's total, then down with each purchase
+  const ticks = [{ t: 0, cash: startCash }, { t: at('money').start + 0.6, cash: T.before - gift }];
+  if (gift) ticks.push({ t: at('gift').start + 1.2, cash: T.before });
+  let running = T.before;
+  buys.forEach((b, i) => { running -= b.price; ticks.push({ t: at(`buy${i}`).start + 1.0, cash: running }); });
+  for (const [k, tk] of ticks.entries()) overlays.push({ png: await hud(tk.cash, nowRes, k), from: tk.t, to: ticks[k + 1]?.t ?? D, noFade: true });
+  const mid = (html, k) => png(join(tmp, `E${NN}-mid-${k}.png`), `<div class="ep-mid">${html}</div>`);
+  overlays.push({ png: await mid(`<div class="ep-banner">Kinsburg</div><div class="ep-pill">Episode ${N}</div>`, 'title'), from: 0, to: at('people').start, fade: 0.2 });
+  overlays.push({ png: await mid(`<div class="ep-card"><h3>Residents</h3><div class="ep-vs"><s>${prevRes}</s><i>→</i><span>${nowRes}</span></div><div class="ep-vs-l"><span>${first ? 'Day 1' : 'Yesterday'}</span><span>Today</span></div></div>`, 'people'), from: at('people').start, to: cuts[1], fade: 0.2 });
+  const rows = [];
+  if (!seed) rows.push(`<div class="ep-row"><span>Yesterday</span><b>${usd(startCash)}</b></div>`);
+  if (seed) rows.push(`<div class="ep-row plus"><span>Starting budget <small>${(seed / 1500).toLocaleString('en-US')} × $1,500</small></span><b>+${usd(seed)}</b></div>`);
+  if (moveCash) rows.push(`<div class="ep-row plus"><span>Move-ins <small>${moveIns} × $1,500</small></span><b>+${usd(moveCash)}</b></div>`);
+  if (followCash) rows.push(`<div class="ep-row plus"><span>Followers <small>${followers} × $1,500</small></span><b>+${usd(followCash)}</b></div>`);
+  if (extra) rows.push(`<div class="ep-row ${extra > 0 ? 'plus' : 'minus'}"><span>Other</span><b>${extra > 0 ? '+' : ''}${usd(extra)}</b></div>`);
+  if (gift) rows.push(`<div class="ep-row plus"><span>Anonymous gift 🎁</span><b>+${usd(gift)}</b></div>`);
+  rows.push(`<div class="ep-row total"><span>City cash</span><b>${usd(T.before)}</b></div>`);
+  const has = (key) => lines.some((l) => l.key === key);
+  const afterMoney = cuts[beats.findIndex((b) => ['money', 'gift'].includes(lines[b.idx].key)) + 1];
+  overlays.push({ png: await mid(`<div class="ep-card"><h3>The city's money</h3>${rows.join('')}</div>`, 'money'), from: at('money').start - 0.1, to: afterMoney - 0.15, fade: 0.2 });
+  if (wall.length && (has('wall') || has('winner'))) {
+    const card = (w, cls) => `<div class="ep-c ${cls}"><i></i><div><b>@${esc(w.handle)}</b><span>${kindEmoji(w.kind)} ${esc(kindLabel(w.kind))}, please!</span></div><em>♥ ${w.likes}</em></div>`;
+    const isWin = (w) => winner && w.kind === winner.kind && w.handle === winner.by;
+    const plain = `<div class="ep-wall">${wall.map((w) => card(w, '')).join('')}</div>`;
+    const lit = `<div class="ep-wall"><div class="ep-top">Top comment</div>${wall.map((w) => card(w, isWin(w) ? 'win' : 'dim')).join('')}</div>`;
+    const wEnd = winner ? at('winner').start : cuts[beats.findIndex((b) => lines[b.idx].key === 'wall') + 1];
+    // "You asked for a lot" shows every card; with only a few requests the wall opens on the winner
+    if (has('wall')) overlays.push({ png: await png(join(tmp, `E${NN}-wall.png`), plain), from: at('wall').start - 0.1, to: wEnd, fade: 0.2 });
+    if (winner) overlays.push({ png: await png(join(tmp, `E${NN}-wall-win.png`), lit), from: has('wall') ? wEnd : wEnd - 0.1, to: at('winner').end + 0.4, fade: 0.15 });
+  }
+  for (const [i, b] of buys.entries()) {
+    const l = at(`buy${i}`);
+    overlays.push({ png: await png(join(tmp, `E${NN}-tag${i}.png`), `<div class="ep-tag"><div>${b.emoji} ${esc(b.label)}: ${usd(b.price)}</div></div>`), from: l.start + 0.1, to: l.end + 0.3, fade: 0.15 });
+    overlays.push({ png: await png(join(tmp, `E${NN}-minus${i}.png`), `<div class="ep-minus">−${usd(b.price)}</div>`), from: l.start + 1.0, to: l.start + 2.2, fade: 0.25, rise: 160 });
+  }
+  if (!buys.length && wait) {
+    overlays.push({ png: await mid(`<div class="ep-card"><h3>Saving up</h3><div class="ep-row"><span>${esc(wait.label)}</span><b>${usd(wait.price)}</b></div><div class="ep-row total"><span>We have</span><b>${usd(T.after)}</b></div></div>`, 'cant'), from: at('cant').start, to: at('left').start, fade: 0.2 });
+  }
+  const leftRows = [`<div class="ep-row total"><span>Left</span><b>${usd(T.after)}</b></div>`];
+  if (wait) leftRows.push(`<div class="ep-row"><span>Next: ${esc(wait.label)}</span><b>${usd(wait.price)}</b></div>`);
+  const leftEnd = lines.find((l) => l.key === 'next') ? at('next').end + 0.3 : at('cta').start;
+  overlays.push({ png: await mid(`<div class="ep-card"><h3>After today</h3>${leftRows.join('')}</div>`, 'left'), from: at('left').start, to: leftEnd, fade: 0.2 });
+  overlays.push({ png: await sign(tmp, `E${NN}`, 'Top comment', 'gets built'), from: at('cta').start + 0.1, to: D, fade: 0.2 });
+
+  const builtText = buys.length ? buys.map((b) => `${b.emoji} ${b.label} (${usd(b.price)}${b.city ? ', the city\'s own pick' : b.by && !b.home ? `, asked by @${b.by}` : b.home ? `, for @${b.by}` : ''})`).join('\n') : `Nothing yet: we're saving up for ${aOrAn(wait?.label ?? 'thing')} ${(wait?.label ?? 'something').toLowerCase()} (${usd(wait?.price ?? 0)}).`;
+  await finish(tmp, 'E', {
+    xf, folder: `episodes/episode-${NN}`, rewriteCaption: true,
+    shots, overlays, voice: v, duration: D,
+    caption: `Kinsburg · Episode ${N} 🏗️\n\n${first ? 'Day 1 of building this city together.' : `Yesterday ${prevRes} people lived here. Today ${nowRes}.`} Every new neighbour and every new follower gives the city $1,500.${gift ? ` And today someone gave the city ${usd(gift)}, anonymously 🎁` : ''}\n\nBuilt today:\n${builtText}\n\nLeft in the bank: ${usd(T.after)}.${wait ? ` Next up: ${wait.label} (${usd(wait.price)}).` : ''}\n\nComment what we should build next. The top comment gets built. No house yet? Comment MOVE IN.\n\n#kinsburg #citybuilder #isometric #cozygames #buildingtogether`,
+    coverBg: await thumbStill(page, tmp, `E${NN}`, { target: buys[0]?.target ?? square, zoom: buys.length ? 3.4 : 1.4, y: 0.72, rings: buys.map((b) => b.target) }),
+    coverHtml: `<div style="position:absolute;left:60px;right:60px;top:${THUMB.top}px;display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center;color:${C.white};font-weight:900;text-transform:uppercase;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 34px rgba(11,20,48,.6)">
+  <div class="ep-banner" style="font-size:92px;text-shadow:none">Kinsburg</div><div class="ep-pill" style="font-size:46px;text-shadow:none">Episode ${N}</div>
+  <div style="font-size:${buys.length ? 104 : 96}px;line-height:1.02;margin-top:20px;text-wrap:balance">${buys.length ? `We built ${esc(aOrAn(buys[0].label))} <span style="color:${C.gold}">${esc(buys[0].label.toLowerCase())}</span>` : `Saving up: <span style="color:${C.gold}">${usd(T.after)}</span>`}</div></div>`,
+  });
+  return { episode: N, built: buys.map((b) => b.label), after: T.after };
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), 'kinsburg-launch-'));
 try {
@@ -891,7 +1106,7 @@ try {
   };
   const right = `${R.length.toLocaleString('en-US')} residents`;
   log(`${R.length} residents${demo ? ' (sample residents: re-run with --url after launch)' : ''}`);
-  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1], ['L1', reelL1], ['T2', reelT2], ['T3', reelT3]]) {
+  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1], ['L1', reelL1], ['T2', reelT2], ['T3', reelT3], ['E', reelE]]) {
     if (ONLY ? ONLY !== id : !['A', 'B', 'C'].includes(id)) continue; // D and the series only on request
     const t0 = Date.now();
     await make({ tmp, page, R, right, cardOf });

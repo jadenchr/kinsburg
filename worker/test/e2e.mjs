@@ -607,6 +607,8 @@ try {
   j = await (await admin('/admin/builds', { run: true })).json();
   const tpPaid = await resident('third_person');
   ok(j.run?.built?.length === 0 && j.builds.length === 2, 'built requests are not built twice', j.run);
+  const day1 = (await (await fetch(`${BASE}/api/city/town.json`)).json()).cityCash?.today;
+  ok(day1?.prev?.after != null && day1?.income?.adjust?.amount === 50000 && day1?.residents > 0 && Array.isArray(day1?.wall) && day1.ledgerId > 0, "the day's summary records yesterday, income since, residents and the comment wall (for the episode)", day1);
   ok(tpPaid?.home === 'villa' && tpPaid?.homeNo === 5 && j.run?.homes?.[0] === 'third_person:villa#5' && (await cashNow()) === cash1, 'the city pays $50,000 for the queued villa: villa #5', { home: tpPaid, run: j.run });
   const led = (await (await admin('/admin/cash')).json()).ledger;
   ok(led.some((x) => x.kind === 'home' && x.amount === -50000) && led.some((x) => x.kind === 'build' && x.amount === -125000) && led.some((x) => x.kind === 'follows' && x.amount === 6000), 'every dollar is in the ledger', led.slice(0, 6));

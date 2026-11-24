@@ -68,11 +68,22 @@ export async function runDailyBuilds(env: Env, now = Date.now(), force = false) 
     ...ranked.map((t) => ({ type: 'build' as const, ...t, price: buildPrice(t.kind) })),
     ...homeQueue.map((h) => ({ type: 'home' as const, ...h, price: HOME_PRICE[h.kind] })),
   ];
+  // for the daily episode: yesterday's summary, the comment wall, and the money that came in since
+  const prevRaw = await db.prepare(`SELECT value FROM meta WHERE key = 'cash_day'`).first<{ value: string }>();
+  let prev: any = null;
+  try { prev = prevRaw ? JSON.parse(prevRaw.value) : null; } catch { prev = null; }
+  const wall = (await db.prepare(
+    `SELECT handle, kind, likes FROM build_requests WHERE status = 'open' ORDER BY likes DESC, created_at ASC LIMIT 12`,
+  ).all<{ handle: string; kind: string; likes: number }>()).results;
+  const incomeRows = (await db.prepare(
+    `SELECT kind, COUNT(*) AS n, SUM(amount) AS amount FROM city_ledger WHERE id > ?1 AND amount > 0 GROUP BY kind`,
+  ).bind(Number(prev?.ledgerId ?? 0)).all<{ kind: string; n: number; amount: number }>()).results;
+  const income = Object.fromEntries(incomeRows.map((r) => [r.kind, { n: r.n, amount: r.amount }]));
   const before = await cityCash(env);
   let cash = before;
   const maxBuilds = intVar(env.BUILDS_PER_DAY, BUILDS_PER_DAY), maxHomes = intVar(env.HOMES_PER_DAY, 3);
   const built: string[] = [], homes: string[] = [];
-  const summary = { day, before, after: 0, built: [] as Array<{ id: number; kind: string; by: string; price: number }>, homes: [] as Array<{ handle: string; kind: string; no: number; price: number }>, waiting: null as null | { type: string; kind: string; handle?: string; price: number } };
+  const summary = { day, at: iso(now), wall, income, prev: prev ? { day: prev.day, residents: prev.residents ?? null, followers: prev.followers ?? null, after: prev.after ?? null } : null, residents: 0, followers: null as number | null, ledgerId: 0, before, after: 0, built: [] as Array<{ id: number; kind: string; by: string; price: number }>, homes: [] as Array<{ handle: string; kind: string; no: number; price: number }>, waiting: null as null | { type: string; kind: string; handle?: string; price: number } };
   const rows: Row[] = [];
   for (const it of items) {
     if (it.type === 'build' && built.length >= maxBuilds) continue;
@@ -125,6 +136,14 @@ export async function runDailyBuilds(env: Env, now = Date.now(), force = false) 
   }
   if (rows.length) await writeSnapshots(env, rows);
   summary.after = await cityCash(env);
+  const [{ n: realResidents }, last, fol] = await Promise.all([
+    db.prepare(`SELECT COUNT(*) AS n FROM residents WHERE handle <> ?1 AND handle NOT LIKE 'vacant.lot.%'`).bind(env.CITY_ACCOUNT.toLowerCase()).first<{ n: number }>().then((r) => r ?? { n: 0 }),
+    db.prepare('SELECT MAX(id) AS id FROM city_ledger').first<{ id: number | null }>(),
+    db.prepare(`SELECT value FROM meta WHERE key = 'followers_count'`).first<{ value: string }>(),
+  ]);
+  summary.residents = realResidents;
+  summary.followers = fol ? Number(fol.value) : null;
+  summary.ledgerId = last?.id ?? 0;
   await db.batch([
     db.prepare(`INSERT INTO meta (key, value) VALUES ('builds_day', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(String(day)),
     // what happened today, for the daily episode (part 2) and town.json

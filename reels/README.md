@@ -8,6 +8,16 @@ One folder per Reel, grouped by series. Every folder has:
 
 Hashtag choices and what's working for similar accounts: [RESEARCH.md](RESEARCH.md).
 
+## Daily episodes
+
+`episodes/episode-NN/` holds one "Kinsburg · Episode N" per day, made from that day's 12:00 UTC build run: residents yesterday → today, the city's money (move-ins and new followers at $1,500 each), the comment wall with real handles, what got built with its price, what's left and what's next. Jadie narrates. The caption is written from the same data, so it's always right for that day; post it as it is.
+
+Make today's episode (after 12:07 UTC, when the run has happened):
+
+```bash
+npm run reel:launch -- --only E --url https://kinsburg.com
+```
+
 ## Posting order
 
 | Order | Reel | Status |
