@@ -561,30 +561,40 @@ async function metaGet(env: Env, keys: string[]): Promise<Record<string, string>
 const metaSet = (env: Env, key: string, value: string) =>
   env.DB.prepare('INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, value);
 
+/** The current pacing window (IG_REPLY_WINDOW_SECONDS, default 10 minutes: one per 15-minute check). */
+const windowKey = (env: Env) => String(Math.floor(Date.now() / (intVar(env.IG_REPLY_WINDOW_SECONDS, 600) * 1000)));
+
 export async function replyStatus(env: Env) {
-  const m = await metaGet(env, ['replies_paused_until', 'replies_pause_hours', 'replies_day', 'replies_count']);
+  const m = await metaGet(env, ['replies_paused_until', 'replies_pause_hours', 'replies_day', 'replies_count', 'replies_window']);
   const today = new Date().toISOString().slice(0, 10);
   const pausedUntil = m.replies_paused_until && Date.parse(m.replies_paused_until) > Date.now() ? m.replies_paused_until : null;
+  const [wk, wn] = String(m.replies_window ?? '').split(':');
   return {
     pausedUntil,
     lastPauseHours: Number(m.replies_pause_hours ?? 0),
     today: m.replies_day === today ? Number(m.replies_count ?? 0) : 0,
+    /** replies sent in the current pacing window, by every sender (welcomes, catch-ups, queue, announcements) */
+    thisWindow: wk === windowKey(env) ? Number(wn ?? 0) : 0,
     perRun: intVar(env.IG_REPLY_MAX_PER_RUN, 2),
     perDay: intVar(env.IG_REPLY_MAX_PER_DAY, 80),
   };
 }
 
-/** How many replies may go out right now. */
+/** How many replies may go out right now: per window (shared by every sender) and per day. */
 export async function replyAllowance(env: Env): Promise<number> {
   const s = await replyStatus(env);
   if (s.pausedUntil) return 0;
-  return Math.max(0, Math.min(s.perRun, s.perDay - s.today));
+  return Math.max(0, Math.min(s.perRun - s.thisWindow, s.perDay - s.today));
 }
 
 export async function noteReplies(env: Env, n: number) {
   const s = await replyStatus(env);
   const today = new Date().toISOString().slice(0, 10);
-  const stmts = [metaSet(env, 'replies_day', today), metaSet(env, 'replies_count', String(s.today + n))];
+  const stmts = [
+    metaSet(env, 'replies_day', today),
+    metaSet(env, 'replies_count', String(s.today + n)),
+    metaSet(env, 'replies_window', `${windowKey(env)}:${s.thisWindow + n}`),
+  ];
   // Replies are flowing again after a pause ended: the next block starts short. Not while a pause
   // set in this same run is active.
   if (!s.pausedUntil) stmts.push(metaSet(env, 'replies_pause_hours', '0'));
@@ -617,6 +627,7 @@ export async function handReply(env: Env, body: any) {
   const status = await replyStatus(env);
   if (status.pausedUntil) return { error: `replies are paused until ${status.pausedUntil} (Instagram comment block)` };
   if (status.today >= status.perDay) return { error: `daily reply cap reached (${status.perDay})` };
+  if (status.thisWindow >= status.perRun) return { error: `${status.perRun} replies already went out in the last few minutes: add "queue": true and it goes out at the next check` };
   const token = await getToken(env);
   if (!token) return { error: 'Instagram not connected' };
   try {

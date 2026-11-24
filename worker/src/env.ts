@@ -32,6 +32,8 @@ export interface Env {
   FOLLOWERS_CHECK_MINUTES?: string;
   IG_REPLY_MAX_PER_RUN: string;
   IG_REPLY_MAX_PER_DAY?: string;
+  /** Seconds per reply pacing window; IG_REPLY_MAX_PER_RUN replies per window in total (default 600). */
+  IG_REPLY_WINDOW_SECONDS?: string;
   /** UTC hour after which the day's most-liked build requests are built (default 12). */
   BUILD_HOUR_UTC?: string;
   /** Builds per day (default BUILDS_PER_DAY in shared/builds.mjs). */

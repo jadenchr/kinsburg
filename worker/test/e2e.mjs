@@ -35,6 +35,8 @@ const VARS = {
   IG_DM_ENABLED: 'true',
   SIM_RANDOM_INCIDENTS: 'false',
   IG_REPLY_ENABLED: 'true', // production keeps routine replies off; the tests still exercise the pacing and pause
+  IG_REPLY_MAX_PER_RUN: '3', // one queued reply + a welcome + the blocked second welcome fit in one poll
+  IG_REPLY_WINDOW_SECONDS: '1', // production paces replies per 10-minute window; the tests poll faster
   BUILD_HOUR_UTC: '24', // never build on the cron during tests: /admin/builds { run } builds on demand
   IG_CALLS_ENABLED: 'false',
   HOMES_LIMIT: '3',
@@ -230,14 +232,17 @@ try {
   console.log('\nreply queue');
   r = await admin('/admin/reply', { commentId: 'abc', message: 'hi', queue: true });
   ok(!!(await r.json()).error, 'a queued reply needs a real comment id');
-  for (const [id, msg] of [['9990001', 'Your villa is built 🏝️'], ['9990002', 'Your skyscraper is up 🏙️'], ['9990003', 'Third in line']]) {
+  for (const [id, msg] of [['9990001', 'Your villa is built 🏝️'], ['9990002', 'Your skyscraper is up 🏙️'], ['9990003', 'Third in line'], ['9990004', 'Fourth in line']]) {
     j = await (await admin('/admin/reply', { commentId: id, message: msg, handle: 'someone', queue: true })).json();
   }
-  ok(j.queued === true && j.waiting === 3, 'replies wait in the queue', j);
+  ok(j.queued === true && j.waiting === 4, 'replies wait in the queue', j);
   j = await (await admin('/admin/reply-queue/flush', {})).json();
-  ok(j.sent === 2 && queuedSent.map((x) => x.comment).join() === '9990001,9990002' && queuedSent[0].message === 'Your villa is built 🏝️', 'a flush sends the oldest, at most 2 per run', { j, queuedSent });
+  ok(j.sent === 3 && queuedSent.map((x) => x.comment).join() === '9990001,9990002,9990003' && queuedSent[0].message === 'Your villa is built 🏝️', 'a flush sends the oldest, up to the pace (3 per window in tests)', { j, queuedSent });
   let qs = await (await admin('/admin/reply-queue')).json();
-  ok(qs.replies.filter((x) => x.status === 'queued').length === 1 && qs.replies.filter((x) => x.status === 'sent').length === 2, 'sent ones are marked; the rest keep waiting', qs.replies.map((x) => x.status));
+  ok(qs.replies.filter((x) => x.status === 'queued').length === 1 && qs.replies.filter((x) => x.status === 'sent').length === 3, 'sent ones are marked; the rest keep waiting', qs.replies.map((x) => x.status));
+  r = await admin('/admin/reply', { commentId: '9990009', message: 'Right now please' });
+  ok(/queue/.test((await r.json()).error ?? ''), 'an immediate reply waits its turn once the window is used up (it says to queue it)');
+  await new Promise((res) => setTimeout(res, 1100)); // next pacing window (1 s in tests, 10 min live)
 
   console.log('\ncomment poller (cron)');
   const before = mockHits;
@@ -262,9 +267,12 @@ try {
   ok(replyHits.length === 2 && (await r.json()).missed.replied === 0, 'the admin catch-up also respects the pause', replyHits.length);
   r = await admin('/admin/reply', { commentId: '1234567', message: 'Welcome!' });
   ok(/paused/.test((await r.json()).error ?? '') && replyHits.length === 2, 'a hand-picked reply also waits out the pause');
+  ok(queuedSent.length === 4 && queuedSent[3].comment === '9990004', 'the check sends queued replies first, before welcomes', queuedSent.map((x) => x.comment));
+  await admin('/admin/reply', { commentId: '9990005', message: 'During the block', queue: true });
+  await new Promise((res) => setTimeout(res, 1100));
   j = await (await admin('/admin/reply-queue/flush', {})).json();
   qs = await (await admin('/admin/reply-queue')).json();
-  ok(j.sent === 0 && qs.replies.find((x) => x.comment_id === '9990003')?.status === 'queued' && queuedSent.length === 2, 'during a comment block queued replies wait (nothing is lost)', { j, queuedSent: queuedSent.length });
+  ok(j.sent === 0 && qs.replies.find((x) => x.comment_id === '9990005')?.status === 'queued' && queuedSent.length === 4, 'during a comment block queued replies wait (nothing is lost)', { j, queuedSent: queuedSent.length });
 
 
   console.log('\ntown: votes, mayor, growing houses');

@@ -103,6 +103,14 @@ export default {
   },
 
   async scheduled(controller, env): Promise<void> {
+    // hand-picked replies first: they share the reply allowance with welcome replies, which come next
+    if (controller.cron !== '41 3 * * 1') {
+      try {
+        await flushReplyQueue(env);
+      } catch (err) {
+        log('replies_failed', { error: String(err) });
+      }
+    }
     try {
       if (controller.cron === '41 3 * * 1') await refreshToken(env);
       else await pollComments(env);
@@ -120,7 +128,7 @@ export default {
     }
     // the city simulation steps on the 15-minute cron, even when Instagram is unreachable
     if (controller.cron !== '41 3 * * 1') {
-      for (const [name, step] of [['sim', () => simTick(env)], ['politics', () => politicsTick(env)], ['announce', () => flushAnnouncements(env)], ['replies', () => flushReplyQueue(env)]] as const) {
+      for (const [name, step] of [['sim', () => simTick(env)], ['politics', () => politicsTick(env)], ['announce', () => flushAnnouncements(env)]] as const) {
         try {
           await step();
         } catch (err) {

@@ -195,7 +195,7 @@ Every comment a resident leaves on our posts counts. At 3 comments the house get
 
 ## Comment replies
 
-**Routine welcome replies are off** (`IG_REPLY_ENABLED` is `false` in wrangler.jsonc): Instagram kept blocking the account for bursts of replies, so new residents are shouted out in the daily Reels instead. Reply by hand to the comments that matter, up to the daily cap (see "Hand-picked replies" below). With replies switched back on, Kinsburg replies to every MOVE IN comment, at a human pace: at most 2 replies per 15-minute check, a few seconds apart, and at most 80 a day. Instagram blocks accounts that post bursts of similar comments, so this pace is deliberate. Comments that miss out (over the limit, or while paused) wait in a queue and get their reply on a later check.
+Welcome replies are on (`IG_REPLY_ENABLED` in wrangler.jsonc). Every 15-minute check first sends queued hand-picked replies (see "Reply queue" below), then welcomes new residents and catches up on missed ones, all within one shared allowance. Kinsburg replies to every MOVE IN comment, at a human pace: at most 2 replies per 15-minute check, a few seconds apart, and at most 80 a day. Instagram blocks accounts that post bursts of similar comments, so this pace is deliberate. Comments that miss out (over the limit, or while paused) wait in a queue and get their reply on a later check.
 
 If Instagram blocks commenting anyway, Kinsburg stops trying: replies pause for 6 hours, then 12, 24 and up to 48 if it happens again, and continue on their own afterwards. Retrying into a block only makes it longer.
 
