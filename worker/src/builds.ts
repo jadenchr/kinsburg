@@ -8,8 +8,10 @@
 // plot is a 'vacant.lot.<n>' resident row; when the friend comments MOVE IN, joinMany renames the
 // row to them (claimHolds), so they live next door. The friend is never added without asking.
 import { BESTIE_HOLD_DAYS, BUILDS_PER_DAY, BUILD_BY_KIND, REQUEST_DAYS, parseBuildRequest } from '../../shared/builds.mjs';
-import { cityDayAt, traitsFor, type Row } from '../../shared/residents-format.mjs';
-import { RESIDENT_COLS, eventStmt, toRow } from './city';
+import { HOMES, cityDayAt, traitsFor, type Row } from '../../shared/residents-format.mjs';
+import { HOME_PRICE, buildPrice } from '../../shared/economy.mjs';
+import { RESIDENT_COLS, eventStmt, toRow, writeSnapshots } from './city';
+import { cityCash, ledgerStmt, moveInStmt } from './cash';
 import { type Env, intVar, log } from './env';
 import type { IgComment } from './instagram';
 
@@ -48,33 +50,98 @@ export async function runDailyBuilds(env: Env, now = Date.now(), force = false) 
   const db = env.DB;
   const day = cityDayAt(env.CITY_FOUNDED_ISO, now);
   const done = await db.prepare(`SELECT value FROM meta WHERE key = 'builds_day'`).first<{ value: string }>();
-  if (!force && (Number(done?.value) === day || new Date(now).getUTCHours() < intVar(env.BUILD_HOUR_UTC, 12))) return { built: [] as string[], skipped: true };
+  if (!force && (Number(done?.value) === day || new Date(now).getUTCHours() < intVar(env.BUILD_HOUR_UTC, 12))) return { built: [] as string[], homes: [] as string[], skipped: true };
 
   await db.prepare(`UPDATE build_requests SET status = 'expired' WHERE status = 'open' AND created_at < ?1`).bind(iso(now - REQUEST_DAYS * 86400_000)).run();
-  const top = (await db.prepare(
+  // One list in priority order: what people asked for (most-liked first), then the paid villas and
+  // skyscrapers in comment order. The city buys while it can afford the next item and stops at the
+  // first it can't (the head of the WAITLIST): it saves up rather than letting cheaper things jump ahead.
+  const ranked = (await db.prepare(
     `SELECT kind, SUM(likes) AS likes, COUNT(*) AS n, MIN(created_at) AS first FROM build_requests
-     WHERE status = 'open' GROUP BY kind ORDER BY likes DESC, n DESC, first ASC LIMIT ?1`,
-  ).bind(intVar(env.BUILDS_PER_DAY, BUILDS_PER_DAY)).all<{ kind: string; likes: number; n: number }>()).results;
-
-  const built: string[] = [];
-  for (const t of top) {
-    if (!BUILD_BY_KIND[t.kind]) continue;
-    const by = await db.prepare(
-      `SELECT handle FROM build_requests WHERE status = 'open' AND kind = ?1 ORDER BY likes DESC, created_at ASC LIMIT 1`,
-    ).bind(t.kind).first<{ handle: string }>();
-    const row = await db.prepare(
-      `INSERT INTO builds (kind, by_handle, day, likes, requests, pop) VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(number), 0) FROM residents)) RETURNING id`,
-    ).bind(t.kind, by?.handle ?? 'kinsburgtown', day, t.likes ?? 0, t.n).first<{ id: number }>();
-    await db.batch([
-      db.prepare(`UPDATE build_requests SET status = 'built', build_id = ?1 WHERE status = 'open' AND kind = ?2`).bind(row!.id, t.kind),
-      eventStmt(env, 'build', by?.handle ?? null, { id: row!.id, kind: t.kind, likes: t.likes, requests: t.n }),
-    ]);
-    built.push(t.kind);
+     WHERE status = 'open' GROUP BY kind ORDER BY likes DESC, n DESC, first ASC LIMIT 20`,
+  ).all<{ kind: string; likes: number; n: number }>()).results.filter((t) => BUILD_BY_KIND[t.kind]);
+  const homeQueue = (await db.prepare(
+    `SELECT comment_id, handle, kind FROM home_queue WHERE status = 'waiting' ORDER BY at, comment_id LIMIT 50`,
+  ).all<{ comment_id: string; handle: string; kind: 'villa' | 'skyscraper' }>()).results;
+  type Item = { type: 'build'; kind: string; likes: number; n: number; price: number } | { type: 'home'; comment_id: string; handle: string; kind: 'villa' | 'skyscraper'; price: number };
+  const items: Item[] = [
+    ...ranked.map((t) => ({ type: 'build' as const, ...t, price: buildPrice(t.kind) })),
+    ...homeQueue.map((h) => ({ type: 'home' as const, ...h, price: HOME_PRICE[h.kind] })),
+  ];
+  const before = await cityCash(env);
+  let cash = before;
+  const maxBuilds = intVar(env.BUILDS_PER_DAY, BUILDS_PER_DAY), maxHomes = intVar(env.HOMES_PER_DAY, 3);
+  const built: string[] = [], homes: string[] = [];
+  const summary = { day, before, after: 0, built: [] as Array<{ id: number; kind: string; by: string; price: number }>, homes: [] as Array<{ handle: string; kind: string; no: number; price: number }>, waiting: null as null | { type: string; kind: string; handle?: string; price: number } };
+  const rows: Row[] = [];
+  for (const it of items) {
+    if (it.type === 'build' && built.length >= maxBuilds) continue;
+    if (it.type === 'home' && homes.length >= maxHomes) break;
+    if (it.type === 'home') {
+      // moved out, or got a free one meanwhile: drop the request (no charge) before it can hold up the queue
+      const still = await db.prepare('SELECT home FROM residents WHERE handle = ?1').bind(it.handle).first<{ home: number }>();
+      if (!still || still.home > 0) {
+        await db.prepare(`UPDATE home_queue SET status = 'dropped' WHERE comment_id = ?1`).bind(it.comment_id).run();
+        continue;
+      }
+    }
+    if (it.price > cash) {
+      summary.waiting = it.type === 'build' ? { type: 'build', kind: it.kind, price: it.price } : { type: 'home', kind: it.kind, handle: it.handle, price: it.price };
+      break;
+    }
+    if (it.type === 'build') {
+      const by = await db.prepare(
+        `SELECT handle FROM build_requests WHERE status = 'open' AND kind = ?1 ORDER BY likes DESC, created_at ASC LIMIT 1`,
+      ).bind(it.kind).first<{ handle: string }>();
+      const who = by?.handle ?? 'kinsburgtown';
+      const row = await db.prepare(
+        `INSERT INTO builds (kind, by_handle, day, likes, requests, pop) VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(number), 0) FROM residents)) RETURNING id`,
+      ).bind(it.kind, who, day, it.likes ?? 0, it.n).first<{ id: number }>();
+      await db.batch([
+        db.prepare(`UPDATE build_requests SET status = 'built', build_id = ?1 WHERE status = 'open' AND kind = ?2`).bind(row!.id, it.kind),
+        ledgerStmt(env, 'build', -it.price, { handle: who, ref: `build:${row!.id}`, note: `${BUILD_BY_KIND[it.kind].label} (asked by @${who})` }),
+        eventStmt(env, 'build', by?.handle ?? null, { id: row!.id, kind: it.kind, likes: it.likes, requests: it.n, price: it.price }),
+      ]);
+      cash -= it.price;
+      built.push(it.kind);
+      summary.built.push({ id: row!.id, kind: it.kind, by: who, price: it.price });
+    } else {
+      const got = await db.prepare(paidHomeSql()).bind(it.handle, HOMES.indexOf(it.kind)).first<any>();
+      if (!got) {
+        // moved out, or got a free one meanwhile: drop the request, no charge
+        await db.prepare(`UPDATE home_queue SET status = 'dropped' WHERE comment_id = ?1`).bind(it.comment_id).run();
+        continue;
+      }
+      await db.batch([
+        db.prepare(`UPDATE home_queue SET status = 'built' WHERE comment_id = ?1`).bind(it.comment_id),
+        ledgerStmt(env, 'home', -it.price, { handle: it.handle, ref: `home:${it.comment_id}`, note: `${it.kind === 'villa' ? 'Villa' : 'Skyscraper'} #${got.home_no} for @${it.handle}` }),
+        eventStmt(env, 'home', it.handle, { kind: it.kind, no: got.home_no, paid: it.price }),
+      ]);
+      rows.push(toRow(got));
+      cash -= it.price;
+      homes.push(`${it.handle}:${it.kind}#${got.home_no}`);
+      summary.homes.push({ handle: it.handle, kind: it.kind, no: got.home_no, price: it.price });
+    }
   }
-  await db.prepare(`INSERT INTO meta (key, value) VALUES ('builds_day', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(String(day)).run();
-  if (built.length) log('builds_done', { day, built });
-  return { built, skipped: false };
+  if (rows.length) await writeSnapshots(env, rows);
+  summary.after = await cityCash(env);
+  await db.batch([
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('builds_day', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(String(day)),
+    // what happened today, for the daily episode (part 2) and town.json
+    db.prepare(`INSERT INTO meta (key, value) VALUES ('cash_day', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(JSON.stringify(summary)),
+  ]);
+  if (built.length || homes.length) log('builds_done', { day, built, homes, before, after: summary.after });
+  return { built, homes, waiting: summary.waiting, before, after: summary.after, skipped: false };
 }
+
+/**
+ * A paid villa or skyscraper (past the free first 100): the next number of that kind, no limit.
+ * Built when used: modules import each other in a loop, so RESIDENT_COLS isn't set at load time.
+ */
+const paidHomeSql = () => `
+UPDATE residents SET home = ?2, home_no = (SELECT COALESCE(MAX(home_no), 0) + 1 FROM residents WHERE home = ?2)
+WHERE handle = ?1 AND home = 0
+RETURNING ${RESIDENT_COLS}`;
 
 /** What town.json shows: every build, open requests per kind, holds and besties. */
 export async function getBuildsPublic(env: Env, now = Date.now()) {
@@ -174,6 +241,7 @@ export async function claimHolds(env: Env, handles: string[], source: string, no
       db.prepare(`UPDATE bestie_holds SET status = 'claimed' WHERE number = ?1`).bind(h.number),
       bestiePairStmt(env, h.by_handle, h.for_handle),
       eventStmt(env, 'bestie_claimed', h.for_handle, { number: h.number, by: h.by_handle }),
+      ...[moveInStmt(env, h.for_handle)].filter((x): x is D1PreparedStatement => !!x),
     ]);
     claimed.set(h.for_handle, toRow(upd));
   }

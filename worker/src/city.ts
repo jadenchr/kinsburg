@@ -15,6 +15,7 @@ import {
   type Row,
 } from '../../shared/residents-format.mjs';
 import { type Env, log, packSize, shardSize } from './env';
+import { moveInStmt } from './cash';
 
 export type JoinSource = 'comment' | 'webhook' | 'stripe' | 'admin' | 'dm';
 export type JoinStatus = 'joined' | 'exists' | 'invalid' | 'abusive' | 'blocked';
@@ -164,6 +165,9 @@ export async function joinMany(env: Env, reqs: JoinRequest[]): Promise<JoinResul
         first.row = toRow(row);
       } // else: lost a race with another invocation, or blocked meanwhile -> stays 'exists'
     });
+    // city cash: $1,500 per move-in (a unique ref per handle, so a retry never pays twice)
+    const income = results.filter((r) => r.status === 'joined').map((r) => moveInStmt(env, r.handle)).filter((x): x is D1PreparedStatement => !!x);
+    if (income.length) await db.batch(income);
   }
   for (const r of results) if (r.status === 'joined') log('join', { handle: r.handle, number: r.number });
   return results;

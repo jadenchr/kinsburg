@@ -5,6 +5,7 @@ import type { PerkKey, TownIncident, TownInfo, TownPoll, TownPolitics } from '..
 import { ICONS } from './icons';
 import { addressOf } from './lookup';
 import { BUILD_BY_KIND } from '../../shared/builds.mjs';
+import { buildPrice, money } from '../../shared/economy.mjs';
 import { COINS, INCIDENTS, PET_COIN_PRICE } from '../../shared/sim.mjs';
 import { TERM_DAYS } from '../../shared/politics.mjs';
 
@@ -40,7 +41,7 @@ const html = (s: string) => {
   return t.content;
 };
 
-export type TownSection = 'move-in' | 'homes' | 'status' | 'vote' | 'support' | 'build';
+export type TownSection = 'move-in' | 'homes' | 'status' | 'vote' | 'support' | 'build' | 'budget';
 
 export interface TownPanel {
   readonly dialog: HTMLDialogElement;
@@ -246,6 +247,38 @@ export function createTownPanel(): TownPanel {
     return ul;
   }
 
+  function budgetSection(t: TownInfo): HTMLElement {
+    const cc = t.cityCash!;
+    const kids: Node[] = [
+      el('p', { class: 'kb-budget-cash' }, money(cc.cash)),
+      el('p', { class: 'kb-town-note' }, `The city earns ${money(cc.income.follower)} for every new follower and ${money(cc.income.moveIn)} for every move-in. Houses stay free: each one is worth ${money(cc.prices.house)}, on the city.`),
+    ];
+    // what it's saving up for: the most-liked request, else the first paid home in the queue
+    const top = cc.waitlist.builds.find((b) => BUILD_BY_KIND[b.kind]);
+    const goal = top ? { label: `${BUILD_BY_KIND[top.kind]!.emoji} ${BUILD_BY_KIND[top.kind]!.label}`, price: top.price } : cc.waitlist.homes[0] ? { label: `${cc.waitlist.homes[0].kind === 'villa' ? 'Villa' : 'Skyscraper'} for @${cc.waitlist.homes[0].handle}`, price: cc.waitlist.homes[0].price } : null;
+    if (goal) {
+      const list = el('ul', { class: 'kb-poll-options' });
+      const li = el('li', { class: 'kb-poll-option' });
+      const pct = Math.min(100, (cc.cash / goal.price) * 100);
+      li.append(el('span', { class: 'kb-poll-label' }, goal.label), el('span', { class: 'kb-poll-count' }, cc.cash >= goal.price ? `${money(goal.price)} · ready` : `${money(cc.cash)} of ${money(goal.price)}`));
+      const bar = el('span', { class: 'kb-poll-bar', 'aria-hidden': 'true' });
+      bar.style.setProperty('--w', `${pct}%`);
+      li.append(bar);
+      list.append(li);
+      kids.push(el('h4', { class: 'kb-town-sub' }, cc.cash >= goal.price ? 'Next up' : 'Saving up for'), list);
+    }
+    const today = cc.today;
+    if (today && (today.built.length || today.homes.length)) {
+      const got = [
+        ...today.built.map((b) => `${BUILD_BY_KIND[b.kind]?.label ?? b.kind} (${money(b.price)}, asked by @${b.by})`),
+        ...today.homes.map((h) => `${h.kind === 'villa' ? 'Villa' : 'Skyscraper'} #${h.no} for @${h.handle} (${money(h.price)})`),
+      ];
+      kids.push(el('p', { class: 'kb-town-note' }, el('b', {}, 'Last built: '), got.join(' · ')));
+    }
+    kids.push(el('p', { class: 'kb-town-note' }, `Prices: ${cc.prices.tiers.map((p) => money(p)).join(' · ')} by size, villa ${money(cc.prices.villa)}, skyscraper ${money(cc.prices.skyscraper)}.`));
+    return section('budget', 'City budget', ...kids);
+  }
+
   function mayorSection(t: TownInfo): HTMLElement {
     const pol: TownPolitics | undefined = t.politics;
     const m = pol?.mayor ?? (t.mayor ? { handle: t.mayor.handle, sinceDay: t.mayor.sinceDay, termEndsDay: t.mayor.sinceDay + TERM_DAYS, approval: null } : null);
@@ -337,7 +370,12 @@ export function createTownPanel(): TownPanel {
       if (list.childElementCount) {
         const soldOut = kinds.filter(([k]) => t.homes![k] && t.homes![k].limit > 0 && t.homes![k].taken >= t.homes![k].limit);
         const kids: Node[] = [list];
-        for (const [k, label] of soldOut) kids.push(el('p', { class: 'kb-town-note' }, `All ${t.homes[k].limit.toLocaleString()} ${label.toLowerCase()} are taken.`));
+        for (const [k, label] of soldOut) kids.push(el('p', { class: 'kb-town-note' }, `All ${t.homes[k].limit.toLocaleString()} free ${label.toLowerCase()} are taken.`));
+        const cc = t.cityCash;
+        if (cc && soldOut.length) {
+          const waiting = cc.waitlist.homes.length;
+          kids.push(el('p', { class: 'kb-town-note' }, `More cost the city ${money(cc.prices.villa)} a villa, ${money(cc.prices.skyscraper)} a skyscraper. Comment `, el('b', {}, 'VILLA'), ' or ', el('b', {}, 'SKYSCRAPER'), ` to join the queue; the city pays in comment order${waiting ? ` (${waiting.toLocaleString()} waiting)` : ''}.`));
+        }
         if (soldOut.length < kinds.length) {
           kids.push(el('p', { class: 'kb-town-note' }, 'Comment ', el('b', {}, 'VILLA'), ' or ', el('b', {}, 'SKYSCRAPER'), ' on any post by ', link(ig, `@${t.account}`), '. First come, first served. One per person.'));
         }
@@ -347,6 +385,9 @@ export function createTownPanel(): TownPanel {
 
     // city status
     if (t.sim) body.append(statusSection(t, data!));
+
+    // the city's budget: cash, what it's saving up for, what it built today
+    if (t.cityCash) body.append(budgetSection(t));
 
     // what to build next
     const reqs = (t.requests ?? []).filter((r) => BUILD_BY_KIND[r.kind]).slice(0, 10);
@@ -358,11 +399,12 @@ export function createTownPanel(): TownPanel {
         li.append(
           el('span', { class: 'kb-request-emoji', 'aria-hidden': 'true' }, def.emoji),
           el('span', { class: 'kb-request-name' }, def.label),
-          el('span', { class: 'kb-request-likes' }, `${r.likes.toLocaleString()} ${r.likes === 1 ? 'like' : 'likes'}`),
+          el('span', { class: 'kb-request-likes' }, `${r.likes.toLocaleString()} ${r.likes === 1 ? 'like' : 'likes'}${t.cityCash ? ` · ${money(buildPrice(r.kind))}` : ''}`),
         );
         list.append(li);
       }
-      body.append(section('build', 'What should we build next?', list, el('p', { class: 'kb-town-note' }, 'Comment what you want built. The most-liked requests get built every day.')));
+      const how = t.cityCash ? 'Comment what you want built. Every day the city builds the most-liked requests it can afford.' : 'Comment what you want built. The most-liked requests get built every day.';
+      body.append(section('build', 'What should we build next?', list, el('p', { class: 'kb-town-note' }, how)));
     }
 
     // jobs and pets

@@ -2,6 +2,7 @@
 // the mayor, sponsors, perk links and DM joins (with the follower badge).
 //
 // Following @kinsburgtown is encouraged, never required: a house never depends on it.
+import { getCashPublic } from './cash';
 import { getBuildsPublic } from './builds';
 import { LEVEL_AT, levelFor } from '../../shared/residents-format.mjs';
 import type { Row } from '../../shared/residents-format.mjs';
@@ -324,6 +325,7 @@ export async function getTown(env: Env) {
     sim,
     politics: await getPolitics(env, sim.stats),
     homes: await homeCounts(env),
+    cityCash: { ...(await getCashPublic(env)), today: await getMeta<unknown>(env, 'cash_day') },
     ...builds,
   };
 }

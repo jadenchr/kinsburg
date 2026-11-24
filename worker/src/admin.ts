@@ -9,6 +9,7 @@
 //   POST /admin/reply   { commentId, message }           one hand-picked reply (daily cap, honours pauses)
 //   POST /admin/builds  { run?, remove? }                list builds; run today's builds now; hide one
 //   POST /admin/ig      { method, path, params } | { check } | { whoami } relay the daily Reel's Instagram calls
+//   GET  /admin/cash | POST /admin/cash { amount, note }  city cash balance and ledger; add or remove money
 //   GET  /admin/cast | POST /admin/cast { handle, remove? }   who may appear in videos (CAST ME)
 //   GET  /admin/stats
 import { shardOf } from '../../shared/residents-format.mjs';
@@ -20,6 +21,7 @@ import { buildsAdmin } from './builds';
 import { putMedia } from './media';
 import { townAdmin } from './town';
 import { castAdmin } from './cast';
+import { cashAdmin } from './cash';
 import { lifeAdmin } from './life';
 import { simAdmin } from './sim';
 import { politicsAdmin } from './politics';
@@ -34,6 +36,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
   if (req.method === 'GET' && path === '/admin/sim') return (await simAdmin(env, req, path, null))!;
   if (req.method === 'GET' && path === '/admin/announcements') return (await politicsAdmin(env, req, path, null))!;
   if (req.method === 'GET' && path === '/admin/cast') return castAdmin(env, req, null);
+  if (req.method === 'GET' && path === '/admin/cash') return cashAdmin(env, req, null);
   if (req.method === 'PUT' && path.startsWith('/admin/media/')) return putMedia(req, env, path);
   if (req.method !== 'POST') return json({ error: 'not found' }, 404);
   let body: any;
@@ -101,6 +104,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       await env.DB.prepare('DELETE FROM city_shards WHERE shard > ?1').bind(last).run();
       return json({ rebuilt: await rebuildShards(env, ids), healed: await healSnapshots(env) });
     }
+    case '/admin/cash':
+      return cashAdmin(env, req, body);
     case '/admin/cast':
       return castAdmin(env, req, body);
     case '/admin/check-comments':

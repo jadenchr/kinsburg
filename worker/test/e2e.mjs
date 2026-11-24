@@ -38,6 +38,7 @@ const VARS = {
   BUILD_HOUR_UTC: '24', // never build on the cron during tests: /admin/builds { run } builds on demand
   IG_CALLS_ENABLED: 'false',
   HOMES_LIMIT: '3',
+  FOLLOWERS_CHECK_MINUTES: '0', // read the follower count on every poll in tests
 };
 
 let failures = 0;
@@ -73,6 +74,7 @@ const COMMENTS = {
   ],
 };
 let mockHits = 0;
+let FOLLOWERS = 40; // the city account's follower count, as the mock Instagram reports it
 let published = null;
 const replyHits = [];
 const dmReplies = [];
@@ -92,6 +94,7 @@ async function mockHandler(req, res) {
   if (u.searchParams.get('access_token') !== SECRETS.IG_ACCESS_TOKEN && req.headers.authorization !== `Bearer ${SECRETS.IG_ACCESS_TOKEN}`) {
     return send({ error: { message: 'bad token' } }, 401);
   }
+  if (u.pathname === `/v27.0/${SECRETS.IG_USER_ID}` && req.method === 'GET' && u.searchParams.get('fields') === 'followers_count') return send({ followers_count: FOLLOWERS });
   if (u.pathname === `/v27.0/${SECRETS.IG_USER_ID}/media` && req.method === 'POST') {
     published = { container: Object.fromEntries(u.searchParams) };
     return send({ id: 'cont1' });
@@ -462,6 +465,9 @@ try {
   r = await admin('/admin/home', { handle: 'owl.buyer', home: 'villa' });
   const ob = await r.json();
   ok(r.status === 200 && ob.no === 4, 'the freed villa goes to the next person with a new number', ob);
+  await castHook([['c998', 'villa please', 'third_person']]);
+  const wl = (await (await fetch(`${BASE}/api/city/town.json`)).json()).cityCash?.waitlist?.homes ?? [];
+  ok(wl.map((x) => x.handle).join() === 'owl.buyer,third_person' && wl.every((x) => x.price === 50000), 'past the free ones, villa requests queue for the city to pay ($50,000), in comment order', wl);
   ({ data } = await loadCity());
   try { validateCityData(data); ok(true, 'city still valid with villas and skyscrapers'); } catch (e) { ok(false, 'city still valid with villas and skyscrapers', String(e)); }
 
@@ -528,6 +534,9 @@ try {
   console.log('\nbuild what you ask + bestie neighbours');
   const POLL = `${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`;
   const pop0 = (await loadCity()).data.residents.length;
+  const cashNow = async () => (await (await admin('/admin/cash')).json()).cash;
+  const cash0 = await cashNow();
+  FOLLOWERS = 44; // four new followers since the last poll
   COMMENTS.m2[0].push(
     { id: 'b1', text: 'build a pool please', username: 'lurker', like_count: 5 },
     { id: 'b2', text: 'can we get a ferris wheel', username: 'third_person', like_count: 9 },
@@ -547,14 +556,31 @@ try {
   ok(t.holds?.length === 1 && t.holds[0].number === fa.number + 1, 'the held plot is the one right after the commenter', t.holds);
   ok(data.residents.some((x) => x.id === `vacant.lot.${fa.number + 1}`) && !data.residents.some((x) => x.id === 'bestie.one'), 'the friend is not added until they ask; the plot shows as held');
   ok(t.besties?.some(([a, b]) => a === 'new_person1' && b === 'third_person'), 'two existing residents become besties without a hold', t.besties);
+  const cash1 = await cashNow();
+  ok(cash1 - cash0 === 1500 + 4 * 1500, 'city cash: $1,500 for the move-in and $1,500 for each of 4 new followers', { cash0, cash1 });
+  FOLLOWERS = 42;
+  await fetch(POLL);
+  FOLLOWERS = 44;
+  await fetch(POLL);
+  ok((await cashNow()) === cash1, 'an unfollow and refollow never pays twice');
 
+  // the ferris wheel ($125,000) is the most-liked: the city can't afford it yet, so it saves up
   r = await admin('/admin/builds', { run: true });
   j = await r.json();
-  ok(j.run?.built?.join() === 'ferris,pool', 'the most-liked requests get built, most likes first', j.run);
+  ok(j.run?.built?.length === 0 && j.run?.waiting?.kind === 'ferris' && (await cashNow()) === cash1, 'too little cash: nothing is built and the top request heads the waitlist (nothing cheaper jumps ahead)', j.run);
+  await admin('/admin/cash', { amount: 150000, note: 'test grant' });
+  j = await (await admin('/admin/builds', { run: true })).json();
+  ok(j.run?.built?.join() === 'ferris,pool', 'with the money, the most-liked requests get built, most likes first', j.run);
+  ok((await cashNow()) === cash1 && j.run?.waiting?.type === 'home' && j.run.waiting.handle === 'third_person', 'their prices ($125,000 + $25,000) come off city cash; a villa already given free is dropped, the next waits', { cash: await cashNow(), waiting: j.run?.waiting });
   ok(j.builds?.find((x) => x.kind === 'pool')?.by === 'lurker' && j.builds?.find((x) => x.kind === 'ferris')?.likes === 9, 'each build credits the most-liked asker', j.builds);
   ok(j.builds?.every((x) => Number.isInteger(x.pop) && x.pop > 0), 'each build records the city size it was made at (it picks the site)', j.builds?.map((x) => x.pop));
+  await admin('/admin/cash', { amount: 50000, note: 'test grant' });
   j = await (await admin('/admin/builds', { run: true })).json();
+  const tpPaid = await resident('third_person');
   ok(j.run?.built?.length === 0 && j.builds.length === 2, 'built requests are not built twice', j.run);
+  ok(tpPaid?.home === 'villa' && tpPaid?.homeNo === 5 && j.run?.homes?.[0] === 'third_person:villa#5' && (await cashNow()) === cash1, 'the city pays $50,000 for the queued villa: villa #5', { home: tpPaid, run: j.run });
+  const led = (await (await admin('/admin/cash')).json()).ledger;
+  ok(led.some((x) => x.kind === 'home' && x.amount === -50000) && led.some((x) => x.kind === 'build' && x.amount === -125000) && led.some((x) => x.kind === 'follows' && x.amount === 6000), 'every dollar is in the ledger', led.slice(0, 6));
 
   COMMENTS.m2[0].push({ id: 'f3', text: 'MOVE IN', username: 'bestie.one' });
   await fetch(POLL);
@@ -562,6 +588,7 @@ try {
   t = await (await fetch(`${BASE}/api/city/town.json`)).json();
   ok(data.residents.find((x) => x.id === 'bestie.one')?.number === fa.number + 1 && data.residents.length === pop0 + 2, 'the friend moves into the held plot next door', { friend: data.residents.find((x) => x.id === 'bestie.one')?.number, expected: fa.number + 1, residents: data.residents.length, wanted: pop0 + 2 });
   ok(!t.holds?.length && t.besties?.some(([a, b]) => a === 'bestie.one' && b === 'friend_a'), 'they are besties and the hold is gone', { holds: t.holds, besties: t.besties });
+  ok((await cashNow()) === cash1 + 1500, 'moving into a held plot pays the city $1,500 too');
   try { validateCityData(data); ok(true, 'city still valid with holds and builds'); } catch (e) { ok(false, 'city still valid with holds and builds', String(e)); }
 
   const st = await (await admin('/admin/stats')).json();

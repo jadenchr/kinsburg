@@ -35,7 +35,7 @@ export async function homeCounts(env: Env) {
 export async function processHomeComments(env: Env, comments: IgComment[]) {
   const db = env.DB;
   const own = env.CITY_ACCOUNT.toLowerCase();
-  const report = { claimed: [] as string[], joined: [] as string[], soldOut: [] as string[], already: 0 };
+  const report = { claimed: [] as string[], joined: [] as string[], soldOut: [] as string[], queued: [] as string[], already: 0 };
   const cmds = new Map<string, { id: string; handle: string; kind: HomeKind }>();
   for (const c of comments) {
     if (!c.id || !c.username || c.username.toLowerCase() === own) continue;
@@ -89,7 +89,11 @@ export async function processHomeComments(env: Env, comments: IgComment[]) {
     } else {
       const has = await db.prepare('SELECT home FROM residents WHERE handle = ?1').bind(f.handle).first<{ home: number }>();
       if (has && has.home > 0) report.already++;
-      else report.soldOut.push(`${f.handle}:${f.kind}`);
+      else if (has) {
+        // the free 100 are gone: the city buys this one when it can afford it, in comment order
+        await db.prepare(`INSERT INTO home_queue (comment_id, handle, kind) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING`).bind(f.id, f.handle, f.kind).run();
+        report.queued.push(`${f.handle}:${f.kind}`);
+      } else report.soldOut.push(`${f.handle}:${f.kind}`);
     }
   }
   // Announce the moment an edition sells out.

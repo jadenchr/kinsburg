@@ -79,6 +79,28 @@ export interface TownInfo {
   homes?: Record<'villa' | 'skyscraper', { limit: number; taken: number }>;
   /** elections, approval and the mayor's fund; missing on an older Worker */
   politics?: TownPolitics;
+  /** the city's budget in dollars (shared/economy.mjs); missing on an older Worker */
+  cityCash?: TownCash;
+}
+
+export interface TownCash {
+  cash: number;
+  /** the city account's follower count at the last check, if known */
+  followers: number | null;
+  income: { follower: number; moveIn: number };
+  prices: { house: number; tiers: number[]; villa: number; skyscraper: number };
+  recent: { at: string; kind: string; amount: number; handle: string | null; note: string | null }[];
+  waitlist: {
+    builds: { kind: string; likes: number; count: number; price: number }[];
+    homes: { handle: string; kind: 'villa' | 'skyscraper'; at: string; price: number }[];
+  };
+  /** what the last daily run did, or null before the first one */
+  today: null | {
+    day: number; before: number; after: number;
+    built: { id: number; kind: string; by: string; price: number }[];
+    homes: { handle: string; kind: string; no: number; price: number }[];
+    waiting: null | { type: string; kind: string; handle?: string; price: number };
+  };
 }
 
 const EMPTY: TownInfo = { day: 1, mayor: null, polls: [], sponsors: [], perkLinks: {}, levelAt: [3, 10, 30], account: 'kinsburgtown' };

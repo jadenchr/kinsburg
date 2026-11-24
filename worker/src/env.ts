@@ -26,6 +26,10 @@ export interface Env {
   IG_CALLS_ENABLED?: string;
   /** tests only: a smaller limit for each limited-edition home (default 100) */
   HOMES_LIMIT?: string;
+  /** paid villas/skyscrapers bought per day at most (default 3) */
+  HOMES_PER_DAY?: string;
+  /** how often the follower count is read for city cash, in minutes (default 60) */
+  FOLLOWERS_CHECK_MINUTES?: string;
   IG_REPLY_MAX_PER_RUN: string;
   IG_REPLY_MAX_PER_DAY?: string;
   /** UTC hour after which the day's most-liked build requests are built (default 12). */

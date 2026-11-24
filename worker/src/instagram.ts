@@ -14,6 +14,7 @@ import { processLifeComments } from './life';
 import { processSimComments } from './sim';
 import { processPoliticsComments } from './politics';
 import { processHomeComments } from './homes';
+import { recordFollowers } from './cash';
 import { type Env, intVar, json, log } from './env';
 
 export interface IgComment {
@@ -268,9 +269,10 @@ export async function pollComments(env: Env) {
   const sim = await processSimComments(env, comments);
   const politics = await processPoliticsComments(env, comments);
   const homes = await processHomeComments(env, comments);
+  const follows = await recordFollowers(env, ig);
   const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, politics, homes, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
+  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, politics, homes, follows, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
