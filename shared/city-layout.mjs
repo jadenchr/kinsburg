@@ -765,6 +765,7 @@ export function toCityData(city, residents, { name = 'Kinsburg', account = 'kins
       ...(r.follower ? { follower: true } : {}),
       ...(r.pet ? { pet: r.pet } : {}),
       ...(r.coins ? { coins: r.coins } : {}),
+      ...(r.home ? { home: r.home, homeNo: r.homeNo } : {}),
     })),
     demo,
   };

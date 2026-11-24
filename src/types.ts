@@ -52,7 +52,13 @@ export interface Resident {
   pet?: Pet;
   /** Town coins earned by responding to calls and working shifts. Pretend money, never sold. */
   coins?: number;
+  /** A limited-edition home instead of the ordinary house (first 100 of each), and its number. */
+  home?: HomeKind;
+  homeNo?: number;
 }
+
+/** Limited-edition homes: villa (comment "villa") and skyscraper (comment "skyscraper"). */
+export type HomeKind = 'villa' | 'skyscraper';
 
 export interface Street {
   id: number;

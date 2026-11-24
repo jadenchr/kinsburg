@@ -23,6 +23,7 @@ import { castAdmin } from './cast';
 import { lifeAdmin } from './life';
 import { simAdmin } from './sim';
 import { politicsAdmin } from './politics';
+import { homesAdmin } from './homes';
 
 export async function handleAdmin(req: Request, env: Env, path: string): Promise<Response> {
   if (!env.ADMIN_TOKEN) return json({ error: 'admin disabled (set ADMIN_TOKEN)' }, 503);
@@ -50,6 +51,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
   if (sim) return sim;
   const politics = await politicsAdmin(env, req, path, body);
   if (politics) return politics;
+  const homes = await homesAdmin(env, path, body);
+  if (homes) return homes;
   const town = await townAdmin(env, path, body);
   if (town) return town;
 
@@ -69,7 +72,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
       if (body.evict) {
         // Removing a resident would shift every later plot, so the slot stays and gets a neutral name.
         const row = await env.DB.prepare(
-          `UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, pet = 0, pets_owned = 0, coins = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`,
+          `UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, pet = 0, pets_owned = 0, coins = 0, home = 0, home_no = NULL WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`,
         ).bind(handle).first<any>();
         if (row) {
           await writeSnapshots(env, [toRow(row)], stmts);

@@ -74,6 +74,8 @@ export interface TownInfo {
   besties?: [string, string][];
   /** open build requests, most liked first (at most 10) */
   requests?: { kind: string; likes: number; count: number }[];
+  /** limited-edition homes: how many of each are taken (first come first served) */
+  homes?: Record<'villa' | 'skyscraper', { limit: number; taken: number }>;
   /** elections, approval and the mayor's fund; missing on an older Worker */
   politics?: TownPolitics;
 }

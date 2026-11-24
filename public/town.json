@@ -288,5 +288,15 @@
       "likes": 19,
       "count": 1
     }
-  ]
+  ],
+  "homes": {
+    "villa": {
+      "limit": 100,
+      "taken": 42
+    },
+    "skyscraper": {
+      "limit": 100,
+      "taken": 24
+    }
+  }
 }

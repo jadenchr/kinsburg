@@ -8,6 +8,7 @@ import type { Row } from '../../shared/residents-format.mjs';
 import { RESIDENT_COLS, checkHandle, eventStmt, joinMany, toRow, writeSnapshots } from './city';
 import { getSim } from './sim';
 import { getPolitics } from './politics';
+import { homeCounts } from './homes';
 import { type Env, json, log } from './env';
 import type { IgClient, IgComment } from './instagram';
 
@@ -254,7 +255,7 @@ export async function handleDms(env: Env, client: IgClient | undefined, messagin
     if (bad) {
       reply = `Sorry, we couldn't build a house for that username.`;
     } else if (wantsOut) {
-      const row = await env.DB.prepare(`UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, level = 0, follower = 0, engagement = 0, pet = 0, pets_owned = 0, coins = 0 WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`).bind(handle).first<any>();
+      const row = await env.DB.prepare(`UPDATE residents SET handle = 'vacant.lot.' || number, perks = 0, level = 0, follower = 0, engagement = 0, pet = 0, pets_owned = 0, coins = 0, home = 0, home_no = NULL WHERE handle = ?1 RETURNING ${RESIDENT_COLS}`).bind(handle).first<any>();
       if (row) {
         await writeSnapshots(env, [toRow(row)], [eventStmt(env, 'move_out', handle, { source: 'dm' })]);
         report.movedOut++;
@@ -322,6 +323,7 @@ export async function getTown(env: Env) {
     account: env.CITY_ACCOUNT,
     sim,
     politics: await getPolitics(env, sim.stats),
+    homes: await homeCounts(env),
     ...builds,
   };
 }

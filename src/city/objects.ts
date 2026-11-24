@@ -24,7 +24,7 @@ export function drawEntry(ctx: CanvasRenderingContext2D, o: Obj, look: Look, det
     case 'house': {
       const p = projFor(o);
       const r = o.resident!;
-      drawHouseEx(ctx, p.cx, p.cy, 64, { style: r.houseStyle, perks: r.perks, sky, highlighted, level: r.level }, detail, o.seed);
+      drawHouseEx(ctx, p.cx, p.cy, 64, { style: r.houseStyle, perks: r.perks, sky, highlighted, level: r.level, home: r.home }, detail, o.seed);
       if (r.pet && detail >= 1) drawPet(ctx, p, sky, r.pet, o.seed);
       return;
     }

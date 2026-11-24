@@ -40,7 +40,7 @@ const html = (s: string) => {
   return t.content;
 };
 
-export type TownSection = 'move-in' | 'status' | 'vote' | 'support' | 'build';
+export type TownSection = 'move-in' | 'homes' | 'status' | 'vote' | 'support' | 'build';
 
 export interface TownPanel {
   readonly dialog: HTMLDialogElement;
@@ -314,6 +314,36 @@ export function createTownPanel(): TownPanel {
       section('move-in', 'How to move in', steps, el('p', { class: 'kb-town-note' }, 'Houses are free. Following us is not required, but it is how you will see your house grow.')),
     );
 
+
+    // limited-edition homes
+    if (t.homes) {
+      const list = el('ul', { class: 'kb-poll-options kb-homes-list' });
+      const kinds = [['villa', 'Villas'], ['skyscraper', 'Skyscrapers']] as const;
+      for (const [k, label] of kinds) {
+        const h = t.homes[k];
+        if (!h || !(h.limit > 0)) continue;
+        const taken = Math.min(h.limit, Math.max(0, h.taken));
+        const left = h.limit - taken;
+        const li = el('li', { class: 'kb-poll-option' });
+        li.append(
+          el('span', { class: 'kb-poll-label' }, label),
+          el('span', { class: 'kb-poll-count' }, left > 0 ? `${left.toLocaleString()} of ${h.limit.toLocaleString()} left` : 'Sold out'),
+        );
+        const bar = el('span', { class: 'kb-poll-bar', 'aria-hidden': 'true' });
+        bar.style.setProperty('--w', `${(taken / h.limit) * 100}%`);
+        li.append(bar, el('span', { class: 'kb-vh' }, `${taken.toLocaleString()} of ${h.limit.toLocaleString()} taken`));
+        list.append(li);
+      }
+      if (list.childElementCount) {
+        const soldOut = kinds.filter(([k]) => t.homes![k] && t.homes![k].limit > 0 && t.homes![k].taken >= t.homes![k].limit);
+        const kids: Node[] = [list];
+        for (const [k, label] of soldOut) kids.push(el('p', { class: 'kb-town-note' }, `All ${t.homes[k].limit.toLocaleString()} ${label.toLowerCase()} are taken.`));
+        if (soldOut.length < kinds.length) {
+          kids.push(el('p', { class: 'kb-town-note' }, 'Comment ', el('b', {}, 'VILLA'), ' or ', el('b', {}, 'SKYSCRAPER'), ' on any post by ', link(ig, `@${t.account}`), '. First come, first served. One per person.'));
+        }
+        body.append(section('homes', 'Villas & skyscrapers', ...kids));
+      }
+    }
 
     // city status
     if (t.sim) body.append(statusSection(t, data!));

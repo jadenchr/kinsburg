@@ -13,6 +13,7 @@ import type { Row } from '../../shared/residents-format.mjs';
 import { processLifeComments } from './life';
 import { processSimComments } from './sim';
 import { processPoliticsComments } from './politics';
+import { processHomeComments } from './homes';
 import { type Env, intVar, json, log } from './env';
 
 export interface IgComment {
@@ -266,9 +267,10 @@ export async function pollComments(env: Env) {
   const life = await processLifeComments(env, comments);
   const sim = await processSimComments(env, comments);
   const politics = await processPoliticsComments(env, comments);
+  const homes = await processHomeComments(env, comments);
   const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, politics, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
+  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, politics, homes, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
@@ -313,8 +315,9 @@ export async function handleInstagramWebhook(req: Request, env: Env): Promise<Re
     const life = await processLifeComments(env, comments);
     const sim = await processSimComments(env, comments);
     const politics = await processPoliticsComments(env, comments);
+    const homes = await processHomeComments(env, comments);
     const dms = messaging.length ? await handleDms(env, client, messaging) : null;
-    return json({ ok: true, ...report, town, cast: cast.cast, life, sim, politics, dms });
+    return json({ ok: true, ...report, town, cast: cast.cast, life, sim, politics, homes, dms });
   } catch (err) {
     log('ig_webhook_failed', { error: String(err) });
     return new Response('retry later', { status: 500 }); // Meta retries for up to 36 h

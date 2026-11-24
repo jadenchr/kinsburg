@@ -22,4 +22,6 @@ export const ICONS = {
   heart: svg('<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.500 15.400 12 20 12 20Z" fill="currentColor" stroke="none"/>', 14),
   crown: svg('<path d="M4 18h16M4.5 16 3 7l5 4 4-6 4 6 5-4-1.5 9Z" fill="currentColor"/>', 14),
   roof: svg('<path d="M3 12 12 4l9 8M6 10v9h12v-9" />', 14),
+  villa: svg('<path d="M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10M9.5 19.5v-5h5v5M3 19.5h18"/>', 14),
+  tower: svg('<path d="M7 20.5V6.5l5-3 5 3v14M4 20.5h16M10 9.5h1M13 9.5h1M10 13h1M13 13h1M10 16.5h1M13 16.5h1"/>', 14),
 } as const;

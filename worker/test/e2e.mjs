@@ -37,6 +37,7 @@ const VARS = {
   IG_REPLY_ENABLED: 'true', // production keeps routine replies off; the tests still exercise the pacing and pause
   BUILD_HOUR_UTC: '24', // never build on the cron during tests: /admin/builds { run } builds on demand
   IG_CALLS_ENABLED: 'false',
+  HOMES_LIMIT: '3',
 };
 
 let failures = 0;
@@ -433,6 +434,36 @@ try {
   await castHook([['c984', 'FUND HEALTH', 'combo.person'], ['c985', 'fund health', 'third_person']]);
   const simNow = (await (await fetch(`${BASE}/api/city/town.json`)).json()).sim;
   ok(typeof simNow.treasury === 'number', 'FUND is only for the mayor and needs treasury (no crash with a small treasury)', simNow.treasury);
+
+  console.log('\nVillas and skyscrapers (limit 3 each in tests)');
+  const homesNow = async () => (await (await fetch(`${BASE}/api/city/town.json`)).json()).homes;
+  await castHook([
+    ['c990', 'i need a villa 🏝️', 'third_person'],
+    ['c991', 'VILLA pls', 'second.person'],
+    ['c992', 'skyscraper!', 'new_person1'],
+    ['c993', 'villa', 'villa.newbie'],
+    ['c994', 'villa please', 'owl.buyer'],
+    ['c995', 'the lighthouse tower looks so cozy at night', 'lurker'],
+    ['c996', 'villainous plot', 'vet.newcomer'],
+  ]);
+  let hv = await homesNow();
+  const tpv = await resident('third_person');
+  ok(tpv?.home === 'villa' && tpv?.homeNo === 1 && (await resident('second.person'))?.homeNo === 2, 'the first commenters get numbered villas in comment order', tpv);
+  ok((await resident('new_person1'))?.home === 'skyscraper', 'SKYSCRAPER gives a skyscraper');
+  const nb = await resident('villa.newbie');
+  ok(nb?.home === 'villa' && nb?.homeNo === 3, 'someone new moves in straight into a villa', nb);
+  ok(!(await resident('owl.buyer'))?.home && hv.villa.taken === 3 && hv.villa.limit === 3, 'once the edition is gone, later comments get nothing', hv);
+  ok(!(await resident('lurker')) && !(await resident('vet.newcomer'))?.home, '"lighthouse tower" in a long comment and "villainous" do not count');
+  ok((await anns()).some((t) => t.startsWith('🏝️ All 3 villas')), 'selling out is announced');
+  await castHook([['c997', 'skyscraper', 'third_person']]);
+  ok((await resident('third_person'))?.home === 'villa', 'one special home per person');
+  r = await admin('/admin/home', { handle: 'third_person', home: 'house' });
+  ok(r.status === 200 && !(await resident('third_person'))?.home && (await homesNow()).villa.taken === 2, 'admin can take a home back, freeing it', await homesNow());
+  r = await admin('/admin/home', { handle: 'owl.buyer', home: 'villa' });
+  const ob = await r.json();
+  ok(r.status === 200 && ob.no === 4, 'the freed villa goes to the next person with a new number', ob);
+  ({ data } = await loadCity());
+  try { validateCityData(data); ok(true, 'city still valid with villas and skyscrapers'); } catch (e) { ok(false, 'city still valid with villas and skyscrapers', String(e)); }
 
   console.log('\nDMs (after App Review)');
   const dm = (sender, text) => {

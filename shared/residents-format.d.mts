@@ -1,5 +1,5 @@
 // Types for residents-format.mjs (compact resident list served by the Worker).
-import type { CityData, Job, Perk, Pet, Resident } from '../src/types';
+import type { CityData, HomeKind, Job, Perk, Pet, Resident } from '../src/types';
 
 export declare const FORMAT: 1;
 export declare const DEFAULT_SHARD_SIZE: number;
@@ -9,7 +9,10 @@ export declare const PERKS: readonly Perk[];
 export declare const PERK_BIT: Readonly<Record<Perk, number>>;
 
 /** [handle, number, joinedDay, jobIndex, houseStyle, perkMask] */
-export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number, level?: number, follower?: number, pet?: number, coins?: number];
+export type Row = [handle: string, number: number, joinedDay: number, job: number, houseStyle: number, perks: number, level?: number, follower?: number, pet?: number, coins?: number, home?: number, homeNo?: number];
+export declare const HOMES: readonly ('house' | HomeKind)[];
+export declare const HOME_LIMIT: Readonly<Record<HomeKind, number>>;
+export declare function parseHomeCommand(text: unknown): HomeKind | null;
 export declare const PETS: readonly ('none' | Pet)[];
 export declare const FREE_PETS: readonly Pet[];
 export declare const RARE_PETS: readonly Pet[];
@@ -71,6 +74,8 @@ export declare function encodeResident(r: {
   follower?: boolean;
   pet?: Pet | number;
   coins?: number;
+  home?: HomeKind | 'house';
+  homeNo?: number;
 }): Row;
 export declare function decodeRow(row: Row): CompactResident;
 export declare function shardOf(number: number, shardSize?: number): number;

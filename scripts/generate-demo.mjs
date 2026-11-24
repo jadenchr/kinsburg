@@ -101,6 +101,13 @@ export function demoResidents(count, seed = 'kinsburg') {
     const pet = ph < 11 ? 'dog' : ph < 18 ? 'cat' : ph < 22 ? 'bunny' : ph < 24 ? 'golden' : ph < 25 ? 'fox' : ph < 26 ? 'owl' : null;
     out.push({ id: handle, handle, number, joinedDay: 0, job, houseStyle, perks, ...(level ? { level } : {}), ...(pet ? { pet } : {}) });
   }
+  // a few limited-edition homes, numbered in move-in order like the real ones
+  const editions = { villa: 0, skyscraper: 0 };
+  for (const r of out) {
+    const hh = [...r.handle].reduce((h, ch) => (h * 41 + ch.charCodeAt(0)) >>> 0, 13) % 100;
+    const kind = hh < 3 ? 'villa' : hh < 5 ? 'skyscraper' : null;
+    if (kind && editions[kind] < 100) { r.home = kind; r.homeNo = ++editions[kind]; }
+  }
   for (const r of out) r.joinedDay = dayFor(r.number, count);
   return out.slice(0, count);
 }

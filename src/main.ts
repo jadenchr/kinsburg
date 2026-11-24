@@ -1,4 +1,5 @@
 // Kinsburg entry point: loads the city, wires the map to the UI, keeps the clock.
+import type { TownSection } from './ui/town';
 import type { CityData, Resident } from './types';
 import { skyAt, COLORS, type SkyState } from './theme';
 import { createCityView } from './city';
@@ -132,7 +133,7 @@ async function start() {
   };
   loadTown(data.demo).then((town) => {
     applyTown(town);
-    if (params.get('town') !== null) ui.openTown((params.get('town') || undefined) as 'move-in' | 'vote' | 'support' | undefined);
+    if (params.get('town') !== null) ui.openTown((params.get('town') || undefined) as TownSection | undefined);
   });
   // the simulation moves on every 15 minutes; refresh what's happening every 2
   setInterval(() => void loadTown(data.demo).then(applyTown), 120_000);

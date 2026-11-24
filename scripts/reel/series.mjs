@@ -130,12 +130,37 @@ export function openCall(sim, now = Date.now()) {
   return `Right now: ${article(what).toLowerCase()} ${what}${place(i.target)} needs ${left} more ${left === 1 ? who.replace(/s$/, '') : who}. Comment RESPOND.`;
 }
 
+/**
+ * One scarcity line for the limited-edition homes, or ''. `homes` is town.json's
+ * { villa: { limit, taken }, skyscraper: { limit, taken } }; missing, malformed or sold-out data adds nothing.
+ */
+export function homesLine(homes) {
+  try {
+    const left = (k) => {
+      const h = homes?.[k];
+      const limit = Number(h?.limit), taken = Number(h?.taken);
+      if (!Number.isFinite(limit) || !Number.isFinite(taken) || limit <= 0) return 0;
+      return Math.max(0, Math.floor(limit - taken));
+    };
+    const parts = [];
+    const v = left('villa'), s = left('skyscraper');
+    if (v > 0) parts.push(`${v} ${v === 1 ? 'villa' : 'villas'}`);
+    if (s > 0) parts.push(`${s} ${s === 1 ? 'skyscraper' : 'skyscrapers'}`);
+    if (!parts.length) return '';
+    const cta = [v > 0 && 'VILLA', s > 0 && 'SKYSCRAPER'].filter(Boolean).join(' or ');
+    return `Only ${parts.join(' and ')} left: comment ${cta}.`;
+  } catch {
+    return '';
+  }
+}
+
 /** Lines to slot in above the MOVE IN line; empty when there is no town data. */
 export function simLines(sim, city, now = Date.now(), politics = null) {
   const hasSim = sim && typeof sim === 'object' && (Array.isArray(sim.recent) || Array.isArray(sim.open));
   const pol = politicsLine(politics?.politics, politics?.polls ?? [], !!politics?.showMayor);
-  if (!hasSim) return pol ? [pol] : [];
-  return [...heroLines(sim, city, now), pol, 'Firefighters, police, doctors: comment RESPOND when the city needs you.', openCall(sim, now)].filter(Boolean);
+  const homes = homesLine(politics?.homes);
+  if (!hasSim) return [pol, homes].filter(Boolean);
+  return [...heroLines(sim, city, now), pol, homes, 'Firefighters, police, doctors: comment RESPOND when the city needs you.', openCall(sim, now)].filter(Boolean);
 }
 
 const plain = (h) => String(h ?? '').replace(/^@+/, '').trim();
@@ -212,8 +237,8 @@ export function buildCaption(seriesId, stats, sim = null, now = Date.now(), poli
   if (!series) throw new Error(`Unknown series "${seriesId}". Known: ${Object.keys(SERIES).join(', ')}`);
   const lines = series.caption(stats).filter(Boolean);
   // shout-outs go above the closing MOVE IN line, which stays last
-  // `politics` is { politics, polls } from town.json (anything else is ignored)
-  const extra = simLines(sim, stats.city, now, { politics: politics?.politics, polls: politics?.polls, showMayor: seriesId === 'resident-of-the-day' });
+  // `politics` is { politics, polls, homes } from town.json (anything else is ignored)
+  const extra = simLines(sim, stats.city, now, { politics: politics?.politics, polls: politics?.polls, homes: politics?.homes, showMayor: seriesId === 'resident-of-the-day' });
   if (extra.length) lines.splice(Math.max(0, lines.length - 1), 0, ...extra);
   const body = lines.join(' ');
   const tags = series.hashtags.slice(0, MAX_HASHTAGS);

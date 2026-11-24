@@ -60,6 +60,8 @@ The recorder also reads the city's town data (`<site>/api/city/town.json` for a 
 
 The same town data carries `politics` (and `polls`). The caption gets at most one politics line, placed after the hero lines and before the RESPOND call and MOVE IN, which stays last. Priority: nominations open ("Kinsburg needs a mayor: comment RUN FOR MAYOR to stand."), then voting (how to vote, up to three candidates as plain names, and the leader once votes exist). Otherwise, only on the Wednesday "resident of the day" series, "Mayor X has a Y% approval rating." If `politics` is missing or old-format, nothing is added. `--no-heroes` skips this too. The wording lives in `politicsLine` in `scripts/reel/series.mjs`.
 
+The town data also carries `homes` (the limited-edition villas and skyscrapers, 100 each). While either is under 100% taken, the caption gets one scarcity line right after the politics line: "Only 58 villas and 76 skyscrapers left: comment VILLA or SKYSCRAPER." If one edition is sold out only the other is named, and if both are sold out, or `homes` is missing, nothing is added. MOVE IN stays last. The wording lives in `homesLine` in `scripts/reel/series.mjs`.
+
 ## Run it from GitHub by hand
 
 Actions tab → **Daily reel** → **Run workflow**. "Record only" is ticked by default. Every run keeps the MP4 as a downloadable artifact for 14 days, so you can watch it before turning posting on.

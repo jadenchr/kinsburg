@@ -1,7 +1,8 @@
 // Draws one house in isometric view. Shared by the city renderer and the share card.
 // OWNER: city renderer agent. Keep this signature; replace the body.
 import { ROOFS, WALLS, COLORS, alpha, mix, type SkyState } from '../theme';
-import type { Perk } from '../types';
+import type { HomeKind, Perk } from '../types';
+import { drawHome } from './homes';
 import { box, fillPoly, groundEllipse, glassColor, hash, material, projX, projY, wallMat, type Proj } from './iso';
 
 export interface HouseOptions {
@@ -13,6 +14,8 @@ export interface HouseOptions {
   highlighted?: boolean;
   /** 0..3 extra storeys, earned by commenting (Resident.level) */
   level?: number;
+  /** a limited-edition home replaces the ordinary house */
+  home?: HomeKind;
 }
 
 /**
@@ -85,6 +88,10 @@ export function drawHouseEx(
   detail: number,
   seed: number,
 ): void {
+  if (opts.home) {
+    drawHome(ctx, opts.home, cx, cy, size, opts, detail, seed);
+    return;
+  }
   const { sky } = opts;
   const pal = sky.palette;
   const style = Math.abs(Math.floor(opts.style)) % 12;

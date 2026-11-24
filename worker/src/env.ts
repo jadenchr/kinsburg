@@ -24,6 +24,8 @@ export interface Env {
   SIM_RANDOM_INCIDENTS?: string;
   /** "false" stops @kinsburgtown announcing calls and elections under its latest post */
   IG_CALLS_ENABLED?: string;
+  /** tests only: a smaller limit for each limited-edition home (default 100) */
+  HOMES_LIMIT?: string;
   IG_REPLY_MAX_PER_RUN: string;
   IG_REPLY_MAX_PER_DAY?: string;
   /** UTC hour after which the day's most-liked build requests are built (default 12). */

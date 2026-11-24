@@ -201,7 +201,7 @@ html,body{margin:0;width:${W}px;height:${H}px;background:transparent;overflow:hi
   }
 }
 
-/** Town data for the hero shout-outs and politics line. Never throws: { sim, politics, polls } (each may be null). */
+/** Town data for the hero shout-outs and politics line. Never throws: { sim, politics, polls, homes } (each may be null). */
 async function loadTown(base) {
   const urls = BASE ? [`${base}/api/city/town.json`, `${base}/town.json`] : [`${base}/town.json`];
   for (const u of urls) {
@@ -212,12 +212,13 @@ async function loadTown(base) {
       const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
       const sim = obj(j?.sim);
       const politics = obj(j?.politics);
-      if (sim || politics) return { sim, politics, polls: Array.isArray(j?.polls) ? j.polls : [] };
+      const homes = obj(j?.homes);
+      if (sim || politics || homes) return { sim, politics, polls: Array.isArray(j?.polls) ? j.polls : [], homes };
     } catch {
       /* missing or old-format town data: no shout-outs or politics */
     }
   }
-  return { sim: null, politics: null, polls: [] };
+  return { sim: null, politics: null, polls: [], homes: null };
 }
 
 /** Today's builds from town.json (the built-today series flies to them). */
@@ -244,7 +245,7 @@ async function main() {
   cleanup.push(async () => rmSync(tmp, { recursive: true, force: true }));
 
   const base = await ensureServer();
-  const town = args.heroes === false ? { sim: null, politics: null, polls: [] } : await loadTown(base);
+  const town = args.heroes === false ? { sim: null, politics: null, polls: [], homes: null } : await loadTown(base);
   const sim = town.sim;
   const heroes = recentHeroes(sim);
   log(`politics: ${politicsLine(town.politics, town.polls, true) || 'none'}`);

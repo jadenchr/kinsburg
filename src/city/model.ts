@@ -2,6 +2,7 @@
 // tile codes, colour jitter, road neighbours, lamps, and depth-ordered draw entries.
 import { TILE, type CityData, type Landmark, type Plot, type Resident } from '../types';
 import { houseTop } from './house';
+import { homeTop } from './homes';
 import { HW, HH, hash } from './iso';
 import { computeSites, type SecretSpot } from './sites';
 import type { BuildInfo, Hold } from './api';
@@ -173,7 +174,7 @@ export function buildModel(data: CityData, extras: Extras = { builds: [], holds:
     }
     const seed = (pl.id * 2654435761) >>> 0;
     if (pl.kind === 'house') {
-      if (res) add({ kind: 'house', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: houseTop(res.houseStyle, res.perks, res.level) * 64 + 6, reach: 0, plot: pl, resident: res }, true);
+      if (res) add({ kind: 'house', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: (res.home ? homeTop(res.home, res.perks) * 64 + 14 : houseTop(res.houseStyle, res.perks, res.level) * 64 + 6), reach: 0, plot: pl, resident: res }, true);
       else {
         const li = add({ kind: 'lot', x: pl.x, y: pl.y, w: 1, h: 1, seed, height: hold ? 30 : 10, reach: hold ? 6 : 0, plot: pl, hold }, true);
         if (hold) byHold.set(hold.number, li);

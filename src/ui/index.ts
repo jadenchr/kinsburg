@@ -365,6 +365,7 @@ export const createUI: CreateUI = (root) => {
     fact(ICONS.key, '', `Moved in on Day ${resident.joinedDay.toLocaleString()}`);
     const storeys = 1 + (resident.level ?? 0);
     if (storeys > 1) fact(ICONS.roof, '', `${storeys}-storey house`);
+    if (resident.home) fact(resident.home === 'villa' ? ICONS.villa : ICONS.tower, 'Home: ', `${resident.home === 'villa' ? 'Villa' : 'Skyscraper'}${resident.homeNo ? ` #${resident.homeNo} of ${townInfo?.homes?.[resident.home]?.limit ?? 100}` : ''}`);
     if (resident.pet) fact(ICONS.paw, 'Pet: ', PET_NAMES[resident.pet]);
     if ((resident.coins ?? 0) > 0) fact(ICONS.coin, 'Town coins: ', `${resident.coins!.toLocaleString()} town coins`);
     const pair = (townInfo?.besties ?? []).find(([a, b]) => a.toLowerCase() === resident.handle.toLowerCase() || b.toLowerCase() === resident.handle.toLowerCase());
@@ -393,6 +394,7 @@ export const createUI: CreateUI = (root) => {
       perks.append(li);
     };
     if (has('monument') || has('street')) perk('kb-perk-founder', ICONS.flag, 'Founder');
+    if (resident.home) perk('kb-perk-gold', resident.home === 'villa' ? ICONS.villa : ICONS.tower, resident.home === 'villa' ? 'Villa' : 'Skyscraper');
     if (has('star')) perk('kb-perk-gold', ICONS.star, 'Gold star');
     if (has('goldRoof')) perk('kb-perk-gold', ICONS.roof, 'Golden roof');
     const pol = townInfo?.politics;
