@@ -6,7 +6,9 @@
 //   POST /admin/rebuild { shard? }                       rebuild snapshot shard(s) from the residents table
 //   POST /admin/check-comments                           run the comment poller now (/admin/poll is the vote poll)
 //   POST /admin/replies { dryRun?, max? }               reply to MOVE IN comments that were missed
-//   POST /admin/reply   { commentId, message }           one hand-picked reply (daily cap, honours pauses)
+//   POST /admin/reply   { commentId, message, queue? }   one hand-picked reply (daily cap, honours pauses);
+//                                                        queue: true waits in the reply queue for the cron
+//   GET  /admin/reply-queue                              queued and recent replies; POST .../flush sends now
 //   POST /admin/builds  { run?, remove? }                list builds; run today's builds now; hide one
 //   POST /admin/ig      { method, path, params } | { check } | { whoami } relay the daily Reel's Instagram calls
 //   GET  /admin/cash | POST /admin/cash { amount, note }  city cash balance and ledger; add or remove money
@@ -16,7 +18,7 @@ import { shardOf } from '../../shared/residents-format.mjs';
 import { RESIDENT_COLS, checkHandle, eventStmt, healSnapshots, isPerk, joinOne, rebuildShards, setPerk, toRow, writeSnapshots } from './city';
 import { safeEqual } from './crypto';
 import { type Env, json, shardSize } from './env';
-import { handReply, igRelay, pollComments, repliesAdmin } from './instagram';
+import { flushReplyQueue, handReply, igRelay, queueReply, replyQueueStatus, pollComments, repliesAdmin } from './instagram';
 import { buildsAdmin } from './builds';
 import { putMedia } from './media';
 import { townAdmin } from './town';
@@ -33,6 +35,8 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
   if (!safeEqual(auth, `Bearer ${env.ADMIN_TOKEN}`)) return json({ error: 'unauthorized' }, 401);
 
   if (req.method === 'GET' && path === '/admin/stats') return stats(env);
+  if (req.method === 'GET' && path === '/admin/reply-queue') return json(await replyQueueStatus(env));
+  if (req.method === 'POST' && path === '/admin/reply-queue/flush') return json(await flushReplyQueue(env));
   if (req.method === 'GET' && path === '/admin/sim') return (await simAdmin(env, req, path, null))!;
   if (req.method === 'GET' && path === '/admin/announcements') return (await politicsAdmin(env, req, path, null))!;
   if (req.method === 'GET' && path === '/admin/cast') return castAdmin(env, req, null);
@@ -113,7 +117,7 @@ export async function handleAdmin(req: Request, env: Env, path: string): Promise
     case '/admin/replies':
       return json(await repliesAdmin(env, body));
     case '/admin/reply':
-      return json(await handReply(env, body));
+      return json(body?.queue ? await queueReply(env, body) : await handReply(env, body));
     case '/admin/builds':
       return json(await buildsAdmin(env, body));
     case '/admin/ig':

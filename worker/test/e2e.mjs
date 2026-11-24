@@ -77,6 +77,7 @@ let mockHits = 0;
 let FOLLOWERS = 40; // the city account's follower count, as the mock Instagram reports it
 let published = null;
 const replyHits = [];
+const queuedSent = [];
 const dmReplies = [];
 const mock = createServer((req, res) => mockHandler(req, res).catch((e) => { console.log('  mock error:', e); res.writeHead(500); res.end(); }));
 async function mockHandler(req, res) {
@@ -124,6 +125,11 @@ async function mockHandler(req, res) {
   }
   // Comment replies: the first goes through, then Instagram blocks the account (anti-spam).
   const rep = /^\/v27\.0\/([^/]+)\/replies$/.exec(u.pathname);
+  // queued hand-picked replies in the tests use comment ids starting 999: always accepted
+  if (rep && req.method === 'POST' && rep[1].startsWith('999')) {
+    queuedSent.push({ comment: rep[1], message: u.searchParams.get('message') });
+    return send({ id: 'qr' + queuedSent.length });
+  }
   if (rep && req.method === 'POST') {
     replyHits.push({ comment: rep[1], message: u.searchParams.get('message') });
     if (replyHits.length === 1) return send({ id: 'reply1' });
@@ -221,6 +227,18 @@ try {
     options: [{ key: 'A', label: '@new_person1', handle: 'new_person1' }, { key: 'B', label: '@third_person', handle: 'third_person' }] });
   ok(r.status === 200, 'election created', await r.clone().json());
 
+  console.log('\nreply queue');
+  r = await admin('/admin/reply', { commentId: 'abc', message: 'hi', queue: true });
+  ok(!!(await r.json()).error, 'a queued reply needs a real comment id');
+  for (const [id, msg] of [['9990001', 'Your villa is built 🏝️'], ['9990002', 'Your skyscraper is up 🏙️'], ['9990003', 'Third in line']]) {
+    j = await (await admin('/admin/reply', { commentId: id, message: msg, handle: 'someone', queue: true })).json();
+  }
+  ok(j.queued === true && j.waiting === 3, 'replies wait in the queue', j);
+  j = await (await admin('/admin/reply-queue/flush', {})).json();
+  ok(j.sent === 2 && queuedSent.map((x) => x.comment).join() === '9990001,9990002' && queuedSent[0].message === 'Your villa is built 🏝️', 'a flush sends the oldest, at most 2 per run', { j, queuedSent });
+  let qs = await (await admin('/admin/reply-queue')).json();
+  ok(qs.replies.filter((x) => x.status === 'queued').length === 1 && qs.replies.filter((x) => x.status === 'sent').length === 2, 'sent ones are marked; the rest keep waiting', qs.replies.map((x) => x.status));
+
   console.log('\ncomment poller (cron)');
   const before = mockHits;
   r = await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`);
@@ -244,6 +262,9 @@ try {
   ok(replyHits.length === 2 && (await r.json()).missed.replied === 0, 'the admin catch-up also respects the pause', replyHits.length);
   r = await admin('/admin/reply', { commentId: '1234567', message: 'Welcome!' });
   ok(/paused/.test((await r.json()).error ?? '') && replyHits.length === 2, 'a hand-picked reply also waits out the pause');
+  j = await (await admin('/admin/reply-queue/flush', {})).json();
+  qs = await (await admin('/admin/reply-queue')).json();
+  ok(j.sent === 0 && qs.replies.find((x) => x.comment_id === '9990003')?.status === 'queued' && queuedSent.length === 2, 'during a comment block queued replies wait (nothing is lost)', { j, queuedSent: queuedSent.length });
 
 
   console.log('\ntown: votes, mayor, growing houses');

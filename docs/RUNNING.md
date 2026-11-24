@@ -223,6 +223,15 @@ The dry run above lists unanswered comments with their `id`. Reply to one (it co
 curl -s -X POST https://kinsburg.com/admin/reply -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"commentId":"17900000000000000","message":"Yes! Comment MOVE IN and you are in 🏡"}'
 ```
 
+### Reply queue
+
+Add `"queue": true` to a hand-picked reply and it waits in a queue instead of going out now. The 15-minute check sends queued replies oldest first, at most 2 per run and 80 a day, and never while Instagram is blocking comments, so nothing is lost during a block.
+
+```bash
+curl -s -X POST https://kinsburg.com/admin/reply -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"commentId":"17900000000000000","message":"Your villa is built 🏝️","queue":true}'
+curl -s https://kinsburg.com/admin/reply-queue -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
 ## Build what you ask
 
 Comments that ask for something the city can build ("build a pool", "can we get a ferris wheel", "Eiffel Tower!") become requests for one of 22 kinds (shared/builds.mjs). Every day after 12:00 UTC the 3 kinds whose requests have the most Instagram likes in total get built; requests older than 7 days drop out. The browser puts build #N on build site #N, so nothing ever moves. The 19:17 UTC "Built today" Reel flies to each one and names who asked first.

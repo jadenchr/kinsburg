@@ -629,3 +629,67 @@ export async function handReply(env: Env, body: any) {
     return { error: String((err as Error).message ?? err) };
   }
 }
+
+// ---------------------------------------------------------------- reply queue
+
+/**
+ * Queue a hand-picked reply (POST /admin/reply { commentId, message, handle?, queue: true }); the
+ * cron sends it when the pace allows (see flushReplyQueue). Queuing the same comment again updates
+ * the message while it waits.
+ */
+export async function queueReply(env: Env, body: any) {
+  const commentId = String(body?.commentId ?? '');
+  const message = String(body?.message ?? '').trim();
+  if (!/^\d{5,30}$/.test(commentId) || !message || message.length > 500) return { error: 'need commentId (digits) and message (1-500 chars)' };
+  await env.DB.prepare(
+    `INSERT INTO reply_queue (comment_id, handle, message) VALUES (?1, ?2, ?3)
+     ON CONFLICT(comment_id) DO UPDATE SET message = excluded.message, handle = excluded.handle WHERE reply_queue.status = 'queued'`,
+  ).bind(commentId, body?.handle ? String(body.handle).slice(0, 40) : null, message).run();
+  const waiting = await env.DB.prepare(`SELECT COUNT(*) AS n FROM reply_queue WHERE status = 'queued'`).first<{ n: number }>();
+  return { queued: true, waiting: waiting?.n ?? 0, pace: await replyStatus(env) };
+}
+
+/** GET /admin/reply-queue: what is waiting and what went out lately. */
+export async function replyQueueStatus(env: Env) {
+  const rows = await env.DB.prepare(
+    `SELECT comment_id, handle, message, status, detail, created_at, sent_at FROM reply_queue
+     ORDER BY CASE status WHEN 'queued' THEN 0 ELSE 1 END, created_at DESC LIMIT 100`,
+  ).all();
+  return { pace: await replyStatus(env), replies: rows.results };
+}
+
+/**
+ * Send queued replies, oldest first, within the reply allowance (per run and per day, shared with
+ * announcements) and never during an Instagram comment block. A comment that no longer exists or
+ * can't take a reply is marked failed instead of blocking the queue.
+ */
+export async function flushReplyQueue(env: Env) {
+  const allowance = await replyAllowance(env);
+  if (allowance < 1) return { sent: 0, reason: 'pacing' };
+  const token = await getToken(env);
+  if (!token) return { sent: 0, reason: 'not connected' };
+  const next = (await env.DB.prepare(`SELECT comment_id, message FROM reply_queue WHERE status = 'queued' ORDER BY created_at, comment_id LIMIT ?1`)
+    .bind(allowance).all<{ comment_id: string; message: string }>()).results;
+  const ig = new IgClient(env.IG_API_BASE, token);
+  let sent = 0;
+  for (const r of next) {
+    try {
+      if (sent) await humanPause();
+      await ig.post(`${r.comment_id}/replies`, { message: r.message });
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE reply_queue SET status = 'sent', sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE comment_id = ?1`).bind(r.comment_id),
+        env.DB.prepare('UPDATE processed_comments SET replied = 1 WHERE comment_id = ?1').bind(r.comment_id),
+      ]);
+      sent++;
+    } catch (err) {
+      log('queued_reply_failed', { comment: r.comment_id, error: String(err) });
+      if (isCommentBlock(err)) {
+        await pauseReplies(env, err);
+        break; // stays queued: it goes out after the pause
+      }
+      await env.DB.prepare(`UPDATE reply_queue SET status = 'failed', detail = ?2 WHERE comment_id = ?1`).bind(r.comment_id, String(err).slice(0, 300)).run();
+    }
+  }
+  if (sent) await noteReplies(env, sent);
+  return { sent };
+}
