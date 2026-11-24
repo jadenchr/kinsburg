@@ -20,13 +20,11 @@ export interface TownPoll {
   anywhere?: boolean;
 }
 
-/** Elections, approval and protests (rules in shared/politics.mjs). */
+/** Elections, approval and the mayor's fund (rules in shared/politics.mjs). */
 export interface TownPolitics {
   mayor: { handle: string; sinceDay: number; termEndsDay: number; approval: number } | null;
   /** nominations: residents comment RUN FOR MAYOR; voting: the poll with id pollId (in TownInfo.polls) */
-  election: { id: string; phase: 'nominations' | 'voting'; recall: boolean; nominationsCloseAt: string; pollId: string | null; candidates: string[] } | null;
-  /** PROTEST comments against the sitting mayor in the last 7 days; threshold forces a recall */
-  protest: { count: number; threshold: number; active: number; recent: string[] } | null;
+  election: { id: string; phase: 'nominations' | 'voting'; nominationsCloseAt: string; pollId: string | null; candidates: string[] } | null;
   /** the mayor can comment FUND HEALTH / SAFETY / EDUCATION / PARKS once a day */
   fund: { cost: number; boost: number };
 }
@@ -76,7 +74,7 @@ export interface TownInfo {
   besties?: [string, string][];
   /** open build requests, most liked first (at most 10) */
   requests?: { kind: string; likes: number; count: number }[];
-  /** elections, approval and protests; missing on an older Worker */
+  /** elections, approval and the mayor's fund; missing on an older Worker */
   politics?: TownPolitics;
 }
 

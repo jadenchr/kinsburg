@@ -1,4 +1,4 @@
-// Politics (phase 3): automatic elections, the mayor's approval and treasury, protests and recalls,
+// Politics (phase 3): automatic elections, the mayor's approval and the town fund,
 // plus announcements that @kinsburgtown posts under its latest post (calls for help, elections).
 // Rules and comment parsers live in shared/politics.mjs. Runs on the 15-minute cron.
 import { cityDayAt } from '../../shared/residents-format.mjs';
@@ -8,15 +8,11 @@ import {
   MAX_CANDIDATES,
   MIN_RESIDENTS,
   NOMINATION_DAYS,
-  PROTEST_WINDOW_DAYS,
-  RECALL_NOMINATION_DAYS,
   TERM_DAYS,
   VOTING_DAYS,
   approvalOf,
-  matchesProtest,
   matchesRunForMayor,
   parseFund,
-  protestThreshold,
 } from '../../shared/politics.mjs';
 import { clampStat } from '../../shared/sim.mjs';
 import { checkHandle, eventStmt } from './city';
@@ -28,7 +24,6 @@ import { closePoll, type Mayor } from './town';
 export interface Election {
   id: string;
   phase: 'nominations' | 'voting';
-  recall: boolean;
   nomClosesAt: string;
   pollId?: string;
   extended?: number;
@@ -48,36 +43,19 @@ const setMeta = (env: Env, key: string, value: unknown) =>
   env.DB.prepare('INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, JSON.stringify(value));
 const delMeta = (env: Env, key: string) => env.DB.prepare('DELETE FROM meta WHERE key = ?1').bind(key);
 
-export const termOf = (m: Mayor) => `${m.handle}:${m.sinceDay}`;
-
 /** Queue something for @kinsburgtown to say under its latest post, worth posting until `expiresAt`. */
 export const announceStmt = (env: Env, text: string, expiresAt?: string) =>
   env.DB.prepare('INSERT INTO announcements (text, expires_at) VALUES (?1, ?2)').bind(text.slice(0, 300), expiresAt ?? iso(Date.now() + 12 * 3_600_000));
 
-async function activeResidents(env: Env, now: number): Promise<number> {
-  const r = await env.DB.prepare(
-    `SELECT COUNT(DISTINCT s.handle) AS n FROM seen_comments s JOIN residents r ON r.handle = s.handle WHERE s.at > ?1`,
-  ).bind(iso(now - PROTEST_WINDOW_DAYS * DAY)).first<{ n: number }>();
-  return r?.n ?? 0;
-}
-
-async function protestCount(env: Env, mayor: Mayor, now: number): Promise<number> {
-  const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM protests WHERE term = ?1 AND at > ?2').bind(termOf(mayor), iso(now - PROTEST_WINDOW_DAYS * DAY)).first<{ n: number }>();
-  return r?.n ?? 0;
-}
-
 // ---------------------------------------------------------------- tick
 
-function startNominations(env: Env, now: number, recall: boolean, why: string) {
-  const e: Election = { id: `${recall ? 'recall' : 'election'}-${iso(now).slice(0, 13).replace(/[-T:]/g, '')}`, phase: 'nominations', recall, nomClosesAt: iso(now + (recall ? RECALL_NOMINATION_DAYS : NOMINATION_DAYS) * DAY) };
-  const days = recall ? RECALL_NOMINATION_DAYS : NOMINATION_DAYS;
-  const text = recall
-    ? `📣 Enough residents protested: Kinsburg holds a recall election! Want the job? Comment RUN FOR MAYOR in the next ${days * 24} hours.`
-    : `🗳️ Kinsburg needs a mayor! Want the job? Comment RUN FOR MAYOR in the next ${days} days. Then everyone votes.`;
-  return { e, stmts: [setMeta(env, 'election', e), eventStmt(env, recall ? 'recall_started' : 'nominations_open', null, { id: e.id, why }), announceStmt(env, text, e.nomClosesAt)] };
+function startNominations(env: Env, now: number, why: string) {
+  const e: Election = { id: `election-${iso(now).slice(0, 13).replace(/[-T:]/g, '')}`, phase: 'nominations', nomClosesAt: iso(now + NOMINATION_DAYS * DAY) };
+  const text = `🗳️ Kinsburg needs a mayor! Want the job? Comment RUN FOR MAYOR in the next ${NOMINATION_DAYS} days. Then everyone votes.`;
+  return { e, stmts: [setMeta(env, 'election', e), eventStmt(env, 'nominations_open', null, { id: e.id, why }), announceStmt(env, text, e.nomClosesAt)] };
 }
 
-/** One politics step: open/close nominations and votes, check protests. */
+/** One politics step: open/close nominations and votes. */
 export async function politicsTick(env: Env, now = Date.now()) {
   const db = env.DB;
   const report: Record<string, unknown> = {};
@@ -91,7 +69,7 @@ export async function politicsTick(env: Env, now = Date.now()) {
     if (!after || after.status === 'closed') {
       const winner = after?.result ? (JSON.parse(after.result).label as string | null) : null;
       const stmts = [delMeta(env, 'election'), setMeta(env, 'election_cooldown', iso(now + DAY))];
-      if (winner) stmts.push(announceStmt(env, `🎉 ${winner} is the new mayor of Kinsburg! Think they're not doing the job? Comment PROTEST.`, iso(now + 3 * DAY)));
+      if (winner) stmts.push(announceStmt(env, `🎉 Congratulations ${winner}, the new mayor of Kinsburg! Thank you to everyone who ran and voted 💛`, iso(now + 3 * DAY)));
       await db.batch(stmts);
       report.electionClosed = winner ?? 'no votes';
     }
@@ -104,7 +82,7 @@ export async function politicsTick(env: Env, now = Date.now()) {
     if (cands.length >= 2) {
       const pollId = `${election.id}-vote`;
       const options = cands.map((c, i) => ({ key: String.fromCharCode(65 + i), label: `@${c.handle}`, handle: c.handle }));
-      const question = election.recall ? 'Recall election: who should lead Kinsburg?' : 'Who should be mayor of Kinsburg?';
+      const question = 'Who should be mayor of Kinsburg?';
       const names = cands.map((c) => `@${c.handle}`).join(', ');
       await db.batch([
         db.prepare('INSERT INTO polls (id, kind, question, options, media_id, closes_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5) ON CONFLICT(id) DO NOTHING').bind(pollId, 'election', question, JSON.stringify(options), iso(now + VOTING_DAYS * DAY)),
@@ -122,7 +100,7 @@ export async function politicsTick(env: Env, now = Date.now()) {
         announceStmt(env, `🎉 @${h} ran unopposed and is the new mayor of Kinsburg!`, iso(now + 3 * DAY)),
       ]);
       report.unopposed = h;
-    } else if (election.recall || (election.extended ?? 0) >= 2) {
+    } else if ((election.extended ?? 0) >= 2) {
       // nobody stood: the sitting mayor (if any) carries on
       await db.batch([delMeta(env, 'election'), setMeta(env, 'election_cooldown', iso(now + 2 * DAY)), eventStmt(env, 'election_empty', null, { id: election.id })]);
       report.empty = election.id;
@@ -134,41 +112,31 @@ export async function politicsTick(env: Env, now = Date.now()) {
     return report;
   }
 
-  // No election running: time for one? Or have enough residents protested?
+  // No election running: time for one?
   const residents = (await db.prepare(`SELECT COUNT(*) AS n FROM residents WHERE handle NOT LIKE 'vacant.lot.%'`).first<{ n: number }>())?.n ?? 0;
-  if (residents < MIN_RESIDENTS) return report;
-  const coolingDown = !!cooldown && iso(now) < cooldown; // only delays regular elections, never a recall
+  if (residents < MIN_RESIDENTS || (cooldown && iso(now) < cooldown)) return report;
   if (!mayor || day >= mayor.sinceDay + TERM_DAYS) {
-    if (coolingDown) return report;
-    const { e, stmts } = startNominations(env, now, false, mayor ? 'term ended' : 'no mayor');
+    const { e, stmts } = startNominations(env, now, mayor ? 'term ended' : 'no mayor');
     await db.batch(stmts);
     report.nominations = e.id;
-    return report;
-  }
-  const active = await activeResidents(env, now);
-  const protesters = await protestCount(env, mayor, now);
-  if (protesters >= protestThreshold(active)) {
-    const { e, stmts } = startNominations(env, now, true, `${protesters} protesters of ${active} active`);
-    await db.batch(stmts);
-    report.recall = e.id;
   }
   return report;
 }
 
 // ---------------------------------------------------------------- comments
 
-/** RUN FOR MAYOR (during nominations), PROTEST (against the sitting mayor), FUND <stat> (the mayor). */
+/** RUN FOR MAYOR (during nominations) and FUND <stat> (the mayor). */
 export async function processPoliticsComments(env: Env, comments: IgComment[], now = Date.now()) {
   const db = env.DB;
   const own = env.CITY_ACCOUNT.toLowerCase();
-  const report = { candidates: [] as string[], protests: [] as string[], funded: null as null | string };
-  const cmds = new Map<string, { id: string; handle: string; run: boolean; protest: boolean; fund: string | null }>();
+  const report = { candidates: [] as string[], funded: null as null | string };
+  const cmds = new Map<string, { id: string; handle: string; run: boolean; fund: string | null }>();
   for (const c of comments) {
     if (!c.id || !c.username || c.username.toLowerCase() === own) continue;
-    const run = matchesRunForMayor(c.text), protest = matchesProtest(c.text), fund = parseFund(c.text);
-    if (!run && !protest && !fund) continue;
+    const run = matchesRunForMayor(c.text), fund = parseFund(c.text);
+    if (!run && !fund) continue;
     const { handle, bad } = checkHandle(c.username);
-    if (!bad) cmds.set(c.id, { id: c.id, handle, run, protest, fund });
+    if (!bad) cmds.set(c.id, { id: c.id, handle, run, fund });
   }
   if (!cmds.size) return report;
   const ids = [...cmds.keys()];
@@ -198,10 +166,6 @@ export async function processPoliticsComments(env: Env, comments: IgComment[], n
     if (f.run && election?.phase === 'nominations' && candCount < MAX_CANDIDATES) {
       stmts.push(db.prepare('INSERT INTO candidates (election_id, handle, at) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING').bind(election.id, f.handle, nowIso));
       if (!report.candidates.includes(f.handle)) { report.candidates.push(f.handle); candCount++; }
-    }
-    if (f.protest && mayor && f.handle !== mayor.handle) {
-      stmts.push(db.prepare('INSERT INTO protests (term, handle, comment_id, at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING').bind(termOf(mayor), f.handle, f.id, nowIso));
-      report.protests.push(f.handle);
     }
     if (f.fund && mayor && f.handle === mayor.handle) fundWanted = f.fund;
   }
@@ -261,21 +225,14 @@ export async function flushAnnouncements(env: Env, now = Date.now()) {
 // ---------------------------------------------------------------- public view
 
 /** The politics part of town.json. */
-export async function getPolitics(env: Env, stats: { health: number; safety: number; education: number; happiness: number }, now = Date.now()) {
+export async function getPolitics(env: Env, stats: { health: number; safety: number; education: number; happiness: number }) {
   const db = env.DB;
   const [mayor, election] = await Promise.all([getMeta<Mayor>(env, 'mayor'), getMeta<Election>(env, 'election')]);
-  const active = await activeResidents(env, now);
-  let protest = null;
-  if (mayor) {
-    const rows = (await db.prepare('SELECT handle FROM protests WHERE term = ?1 AND at > ?2 ORDER BY at DESC LIMIT 200').bind(termOf(mayor), iso(now - PROTEST_WINDOW_DAYS * DAY)).all<{ handle: string }>()).results;
-    protest = { count: rows.length, threshold: protestThreshold(active), active, recent: rows.slice(0, 12).map((r) => r.handle) };
-  }
   let candidates: string[] = [];
   if (election) candidates = (await db.prepare('SELECT handle FROM candidates WHERE election_id = ?1 ORDER BY at LIMIT ?2').bind(election.id, MAX_CANDIDATES).all<{ handle: string }>()).results.map((r) => r.handle);
   return {
-    mayor: mayor ? { handle: mayor.handle, sinceDay: mayor.sinceDay, termEndsDay: mayor.sinceDay + TERM_DAYS, approval: approvalOf(stats, protest?.count ?? 0, active) } : null,
-    election: election ? { id: election.id, phase: election.phase, recall: election.recall, nominationsCloseAt: election.nomClosesAt, pollId: election.pollId ?? null, candidates } : null,
-    protest,
+    mayor: mayor ? { handle: mayor.handle, sinceDay: mayor.sinceDay, termEndsDay: mayor.sinceDay + TERM_DAYS, approval: approvalOf(stats) } : null,
+    election: election ? { id: election.id, phase: election.phase, nominationsCloseAt: election.nomClosesAt, pollId: election.pollId ?? null, candidates } : null,
     fund: { cost: FUND_COST, boost: FUND_BOOST },
   };
 }
@@ -284,7 +241,7 @@ export async function getPolitics(env: Env, stats: { health: number; safety: num
 
 /**
  * POST /admin/politics/tick                       run one step now
- * POST /admin/election/start { recall? }          open nominations now
+ * POST /admin/election/start                     open nominations now
  * POST /admin/election/advance                    end the current phase now (nominations -> voting -> result)
  * POST /admin/announce { text }                   queue an announcement
  * GET  /admin/announcements                       the last 20 announcements
@@ -298,7 +255,7 @@ export async function politicsAdmin(env: Env, req: Request, path: string, body: 
   if (path === '/admin/politics/tick') return json(await politicsTick(env));
   if (path === '/admin/election/start') {
     if (await getMeta<Election>(env, 'election')) return json({ error: 'an election is already running' }, 409);
-    const { e, stmts } = startNominations(env, Date.now(), !!body?.recall, 'admin');
+    const { e, stmts } = startNominations(env, Date.now(), 'admin');
     await db.batch([...stmts, delMeta(env, 'election_cooldown')]);
     return json(e);
   }

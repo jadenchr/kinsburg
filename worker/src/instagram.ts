@@ -89,19 +89,19 @@ export class IgClient {
 // Line 1 of the welcome reply. Links in Instagram comments aren't tappable, so the house link
 // lives in the bio; {n} is the resident number.
 const REPLIES = [
-  'Welcome to Kinsburg, neighbour #{n}! 🏡',
-  'You live here now ✨ #{n}',
-  'Keys are ready 🔑 House #{n} is yours',
-  'Built! 🏠 Welcome home, #{n}',
-  'Your house is up 🏡 #{n}',
-  'Fresh paint, new neighbour 🎨 #{n}',
+  "Welcome to Kinsburg, @{h}! 🏡 You're neighbour #{n}",
+  'You live here now, @{h} ✨ House #{n}',
+  'Keys are ready, @{h} 🔑 House #{n} is yours',
+  'Built! 🏠 Welcome home, @{h} (#{n})',
+  'Your house is up, @{h} 🏡 #{n}',
+  'Fresh paint, new neighbour: @{h} 🎨 #{n}',
 ];
 
 // For a resident who comments MOVE IN again.
 const ALREADY_HERE = [
-  'You already live here ✨ #{n}',
-  'Still home sweet home 🏡 #{n}',
-  'Your keys still work 🔑 #{n}',
+  'You already live here, @{h} ✨ #{n}',
+  'Still home sweet home, @{h} 🏡 #{n}',
+  'Your keys still work, @{h} 🔑 #{n}',
 ];
 
 // A gentle reason to follow, never a condition (Instagram forbids rewarding follows).
@@ -114,8 +114,9 @@ const FOLLOW_NUDGES = [
 function replyText(_env: Env, handle: string, n: number | undefined, already = false): string {
   const i = n ?? handle.length;
   const list = already ? ALREADY_HERE : REPLIES;
-  const greeting = list[i % list.length];
-  const line1 = n ? greeting.replace('{n}', String(n)) : greeting.replace(/,? ?(House )?#\{n\}( is yours)?/, '').trim();
+  const greeting = list[i % list.length].replace('{h}', handle);
+  // without a resident number, drop the number part ("You're neighbour #{n}", "(#{n})", "House #{n} is yours")
+  const line1 = n ? greeting.replace('{n}', String(n)) : greeting.replace(/\s*(You're neighbour |House |\()?#\{n\}( is yours|\))?/, '').trim();
   const nudge = FOLLOW_NUDGES[Math.floor(i / REPLIES.length) % FOLLOW_NUDGES.length];
   return `${line1}\n${nudge}`;
 }

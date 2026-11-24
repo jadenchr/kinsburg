@@ -232,7 +232,7 @@ try {
   await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`);
   ({ data } = await loadCity());
   ok(data.residents.length === 54, 'second poll adds nobody (comments remembered)', data.residents.length);
-  ok(replyHits.length === 2 && replyHits[0].message.includes('\n') && /Follow/.test(replyHits[0].message), 'one welcome reply, then Instagram blocks the second', replyHits);
+  ok(replyHits.length === 2 && replyHits[0].message.includes('\n') && /Follow/.test(replyHits[0].message) && /@(new_person1|second\.person|third_person)\b/.test(replyHits[0].message), 'one welcome reply greeting them by @username, then Instagram blocks the second', replyHits);
   let pace = (await (await admin('/admin/replies', { dryRun: true })).json()).pace;
   ok(!!pace?.pausedUntil && pace.lastPauseHours === 6, 'a comment block pauses replies for 6 hours', pace);
   ok(replyHits.length === 2, 'no reply attempts while paused (the second poll stayed quiet)', replyHits.length);
@@ -399,7 +399,7 @@ try {
   ({ data } = await loadCity());
   try { validateCityData(data); ok(true, 'city still valid with coins'); } catch (e) { ok(false, 'city still valid with coins', String(e)); }
 
-  console.log('\nPolitics: elections, protests, recalls');
+  console.log('\nPolitics: elections, approval, the mayor\'s fund');
   const pol = async () => (await (await fetch(`${BASE}/api/city/town.json`)).json()).politics;
   const anns = async () => (await (await admin('/admin/announcements')).json()).map((a) => a.text);
   ok((await anns()).some((t) => /Kitchen fire at @second\.person's house! Firefighters: comment RESPOND \(2 needed\)/.test(t)), 'starting a fire queues a call for firefighters on Instagram', (await anns()).slice(0, 3));
@@ -422,22 +422,13 @@ try {
   r = await admin('/admin/election/advance', {});
   pv = await pol();
   ok(pv.mayor?.handle === 'combo.person' && !pv.election && typeof pv.mayor.approval === 'number', 'the winner becomes mayor with an approval rating', pv);
-  await castHook([['c977', 'PROTEST', 'third_person'], ['c978', 'protest!', 'second.person'], ['c979', 'PROTEST 😤', 'new_person1'], ['c980', 'protest', 'combo.person']]);
+  await castHook([['c977', 'PROTEST', 'third_person'], ['c978', 'protest!', 'second.person']]);
   pv = await pol();
-  ok(pv.protest.count === 3 && !pv.protest.recent.includes('combo.person'), 'PROTEST counts residents, not the mayor', pv.protest);
-  const approvalBefore = pv.mayor.approval;
-  await admin('/admin/politics/tick', {});
-  ok(!(await pol()).election, 'below the threshold: no recall yet');
-  await castHook([['c981', 'protest', 'owl.buyer'], ['c982', 'I protest', 'vet.newcomer'], ['c983', 'protest', 'third_person']]);
-  pv = await pol();
-  ok(pv.protest.count === 5 && pv.mayor.approval < approvalBefore, 'more protest lowers approval; one protest per person', pv);
-  await admin('/admin/politics/tick', {});
-  pv = await pol();
-  ok(pv.election?.recall === true && pv.election.phase === 'nominations', 'enough protesters force a recall election', pv.election);
-  ok((await anns()).some((t) => t.includes('recall election')), 'the recall is announced');
+  ok(pv.protest === undefined && !pv.election, 'there are no protests: PROTEST comments do nothing', pv);
+  ok((await anns()).some((t) => t.startsWith('🎉 Congratulations @combo.person')), 'the new mayor is congratulated', (await anns()).slice(0, 2));
   const annRows = await (await admin('/admin/announcements')).json();
-  const nomRow = annRows.find((a) => a.text.includes('recall election'));
-  ok(!!nomRow?.expires_at && Date.parse(nomRow.expires_at) - Date.parse(nomRow.created_at) >= 20 * 3600_000, 'an election announcement stays valid until nominations close (survives a reply pause)', nomRow);
+  const nomRow = annRows.find((a) => a.text.startsWith('🗳️ Voting is open'));
+  ok(!!nomRow?.expires_at && Date.parse(nomRow.expires_at) - Date.parse(nomRow.created_at) >= 40 * 3600_000, 'an election announcement stays valid until voting ends (survives a reply pause)', nomRow);
   r = await admin('/admin/coins', { handle: 'combo.person', add: 1 });
   await castHook([['c984', 'FUND HEALTH', 'combo.person'], ['c985', 'fund health', 'third_person']]);
   const simNow = (await (await fetch(`${BASE}/api/city/town.json`)).json()).sim;

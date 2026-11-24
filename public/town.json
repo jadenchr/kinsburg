@@ -201,17 +201,6 @@
       "approval": 58
     },
     "election": null,
-    "protest": {
-      "count": 4,
-      "threshold": 6,
-      "active": 23,
-      "recent": [
-        "iris.z4",
-        "cottage.and.anchor",
-        "peachy.squirrel",
-        "hana9049"
-      ]
-    },
     "fund": {
       "cost": 200,
       "boost": 6

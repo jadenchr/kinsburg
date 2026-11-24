@@ -63,7 +63,7 @@ export interface KinsburgReel {
   /** world position of a resident's home (to pick neighbours) */
   where(id: string): { x: number; y: number } | null;
   /** every resident with their address, for choosing who to feature */
-  residents: { id: string; handle: string; job: string; number: number; level: number; perks: string[]; address: string | null }[];
+  residents: { id: string; handle: string; job: string; number: number; level: number; perks: string[]; pet: string | null; address: string | null }[];
 }
 
 declare global {
@@ -617,7 +617,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
       const t = rc.resident(normalise(id));
       return t ? { x: t.x, y: t.y } : null;
     },
-    residents: data.residents.map((r) => ({ id: r.id, handle: r.handle, job: r.job, number: r.number, level: r.level ?? 0, perks: r.perks, address: addressOf(r, data) })),
+    residents: data.residents.map((r) => ({ id: r.id, handle: r.handle, job: r.job, number: r.number, level: r.level ?? 0, perks: r.perks, pet: r.pet ?? null, address: addressOf(r, data) })),
     async card(id, overrides = {}) {
       const r = byId.get(normalise(id));
       if (!r) throw new Error(`no resident ${id}`);

@@ -141,8 +141,8 @@ export function simLines(sim, city, now = Date.now(), politics = null) {
 const plain = (h) => String(h ?? '').replace(/^@+/, '').trim();
 
 /**
- * At most one politics line, or '' (missing or old-format data). Priority: nominations (or recall),
- * voting, protest at half the threshold or more, then a quiet "Mayor X has a Y% approval rating."
+ * At most one politics line, or '' (missing or old-format data). Priority: nominations, voting,
+ * then a quiet "Mayor X has a Y% approval rating."
  * (only when `showMayor` is true, so it does not run every day). Plain names, no @-tags.
  */
 export function politicsLine(pol, polls = [], showMayor = false) {
@@ -150,9 +150,7 @@ export function politicsLine(pol, polls = [], showMayor = false) {
     if (!pol || typeof pol !== 'object') return '';
     const el = pol.election;
     if (el && el.phase === 'nominations') {
-      return el.recall
-        ? 'Enough residents protested: recall election! Comment RUN FOR MAYOR to stand.'
-        : 'Kinsburg needs a mayor: comment RUN FOR MAYOR to stand.';
+      return 'Kinsburg needs a mayor: comment RUN FOR MAYOR to stand.';
     }
     if (el && el.phase === 'voting') {
       const poll = (Array.isArray(polls) ? polls : []).find((p) => p && p.id === el.pollId);
@@ -163,10 +161,6 @@ export function politicsLine(pol, polls = [], showMayor = false) {
       const top = [...opts].sort((a, b) => b.votes - a.votes)[0];
       if (top && top.votes > 0 && opts.filter((o) => o.votes === top.votes).length === 1) line += ` ${top.name} leads with ${n(top.votes)} ${top.votes === 1 ? 'vote' : 'votes'}.`;
       return line;
-    }
-    const pr = pol.protest;
-    if (pr && pr.threshold > 0 && pr.count > 0 && pr.count * 2 >= pr.threshold && pol.mayor) {
-      return `Some residents want a new mayor: ${n(pr.count)} of ${n(pr.threshold)} protests needed for a recall.`;
     }
     const m = pol.mayor;
     if (showMayor && m?.handle && Number.isFinite(Number(m.approval))) return `Mayor ${plain(m.handle)} has a ${Math.round(Number(m.approval))}% approval rating.`;

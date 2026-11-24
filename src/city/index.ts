@@ -24,6 +24,7 @@ import { drawAnimated, drawEntry, projFor } from './objects';
 import { drawRing } from './house';
 import { createSimOverlay } from './sim-overlay';
 import { createPoliticsOverlay } from './politics-overlay';
+import { createNewcomersOverlay } from './newcomers-overlay';
 
 interface Chunk {
   lod: number;
@@ -58,6 +59,7 @@ export const createCityView: CreateCityView = (canvas) => {
   let billboards: Billboard[] = [];
   const sim = createSimOverlay();
   const politics = createPoliticsOverlay();
+  const newcomers = createNewcomersOverlay();
   const reduced = () => !reelMode && motionQuery.matches;
   motionQuery.addEventListener?.('change', onMotion);
 
@@ -388,6 +390,7 @@ export const createCityView: CreateCityView = (canvas) => {
       };
       sim.draw(ctx, sky, t, S, v, opts);
       politics.draw(ctx, sky, t, S, v, opts);
+      newcomers.draw(ctx, sky, t, S, v, opts);
     }
     for (const i of rings) drawHighlight(m.objs[i], ringMs, S);
   }
@@ -681,6 +684,7 @@ export const createCityView: CreateCityView = (canvas) => {
       model = buildModel(data, extras);
       sim.setModel(model);
       politics.setModel(model);
+      newcomers.setModel(model);
       highlight = -1;
       mode = -1;
       everDrawn = false;
@@ -718,6 +722,7 @@ export const createCityView: CreateCityView = (canvas) => {
         dropAllChunks();
         model = buildModel(cityData, extras);
         sim.setModel(model);
+        newcomers.setModel(model);
         highlight = -1;
       } else {
         // likes and days left changed: update the cards, nothing to repaint

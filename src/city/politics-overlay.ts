@@ -1,4 +1,4 @@
-// Politics overlay: a protest crowd with signs on the town square, the mayor's flag and gold ring,
+// Politics overlay: the mayor's flag and gold ring,
 // candidates' yard signs during an election, and a ballot-box badge over the town hall while voting.
 // Drawn every frame in world space right after the sim overlay (same conventions: occlusion by
 // repainting what stands in front, culling to the view, deterministic from the frame time `t`).
@@ -6,34 +6,17 @@
 import { COLORS, alpha, mix, type SkyState } from '../theme';
 import type { TownPolitics } from '../data/town';
 import { HH, HW, clamp, groundEllipse, hash } from './iso';
-import { T_PLAZA, type Model, type Obj } from './model';
+import type { Model, Obj } from './model';
 import { projFor } from './objects';
 import type { DrawOpts, View } from './sim-overlay';
 
 const TAU = Math.PI * 2;
-const MAX_CROWD = 40;
 const MAX_FRONT = 22;
 
 export interface PoliticsOverlay {
   setModel(m: Model | null): void;
   setPolitics(p: TownPolitics | null): void;
   draw(ctx: CanvasRenderingContext2D, sky: SkyState, t: number, S: number, v: View, o: DrawOpts): void;
-}
-
-interface Person {
-  /** ground point, world px */
-  x: number;
-  y: number;
-  /** grid tile it stands on (for occlusion repaint) */
-  tx: number;
-  ty: number;
-  phase: number;
-  shirt: string;
-  sign: number; // 0 "!", 1 lines, 2 cross
-  paper: string;
-  mega: boolean;
-  /** has something tall in front of its tile, so repaint after drawing */
-  covered: boolean;
 }
 
 interface YardSign {
@@ -46,9 +29,6 @@ interface YardSign {
   covered: boolean;
 }
 
-const SHIRTS = ['#c8463d', '#2f5fb8', '#4c9a5a', '#e0a526', '#7a5aa8', '#2a9d9a', '#d9792c', '#555b66'];
-const PAPERS = ['#fbf6e6', '#ffe27a', '#f4f1ea', '#ff9d8a', '#bfe3f2'];
-const SIGN_INK = ['#c0281f', '#22262e', '#1f4fa8'];
 const SIGN_COLORS = [
   ['#d83a2e', '#ffffff'],
   ['#2f5fb8', '#ffffff'],
@@ -58,10 +38,6 @@ const SIGN_COLORS = [
 export function createPoliticsOverlay(): PoliticsOverlay {
   let model: Model | null = null;
   let pol: TownPolitics | null = null;
-  let crowd: Person[] = [];
-  let crowdBig = false;
-  // crowd bounds (world): centre x, top y for the badge
-  let crowdX = 0, crowdTop = 0, crowdMinX = 0, crowdMaxX = 0, crowdMinY = 0, crowdMaxY = 0;
   let signs: YardSign[] = [];
   let mayorObj: Obj | null = null;
   let hallObj: Obj | null = null;
@@ -86,7 +62,6 @@ export function createPoliticsOverlay(): PoliticsOverlay {
   }
 
   function rebuild() {
-    crowd = [];
     signs = [];
     mayorObj = null;
     hallObj = null;
@@ -118,78 +93,13 @@ export function createPoliticsOverlay(): PoliticsOverlay {
         void k;
       }
     }
-    if (pol.protest && pol.protest.count > 0 && th) buildCrowd(m, th, pol.protest.count, pol.protest.threshold);
   }
 
-  function buildCrowd(m: Model, th: NonNullable<Model['townhall']>, count: number, threshold: number) {
-    crowdBig = count >= threshold;
-    const n = Math.min(MAX_CROWD, count * 2 + (crowdBig ? 8 : 0));
-    // free plaza tiles just south of the hall, nearest the hall's front first
-    const bill = { x: th.x - 2, y: th.y + th.h + 4.2 };
-    const cx = th.x + th.w / 2, fy = th.y + th.h;
-    const tiles: { x: number; y: number; d: number }[] = [];
-    for (let y = fy; y <= fy + 4; y++)
-      for (let x = Math.floor(cx - 4); x <= Math.ceil(cx + 3); x++) {
-        if (x < 0 || y < 0 || x >= m.W || y >= m.H) continue;
-        const i = y * m.W + x;
-        if (m.tile[i] !== T_PLAZA || m.occ[i] >= 0) continue;
-        // keep clear of the billboard's footprint and its posts
-        if (Math.abs(x + 0.5 - bill.x) < 2.6 && Math.abs(y + 0.5 - bill.y) < 2.6) continue;
-        // keep a one-tile margin around buildings in front so figures don't hide behind a roofline
-        tiles.push({ x, y, d: Math.hypot(x + 0.5 - cx, (y + 0.5 - (fy + 1.2)) * 1.4) });
-      }
-    tiles.sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
-    // ~4 people per tile, spread on a jittered 2x2 grid
-    const spots: { gx: number; gy: number; tx: number; ty: number }[] = [];
-    for (const tl of tiles) {
-      for (let s = 0; s < 4; s++) {
-        const u = 0.27 + (s & 1) * 0.46 + (hash(tl.x, tl.y, 70 + s) - 0.5) * 0.14;
-        const w = 0.27 + (s >> 1) * 0.46 + (hash(tl.x, tl.y, 80 + s) - 0.5) * 0.14;
-        spots.push({ gx: tl.x + u, gy: tl.y + w, tx: tl.x, ty: tl.y });
-      }
-      if (spots.length >= n * 1.4) break;
-    }
-    // choose n spots with the nearest tiles first; spots are already ordered by tile distance
-    const pick = spots.slice(0, n);
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    pick.forEach((s, i) => {
-      const x = (s.gx - s.gy) * HW, y = (s.gx + s.gy) * HH;
-      crowd.push({
-        x, y, tx: s.tx, ty: s.ty,
-        phase: hash(s.tx, s.ty, 90 + i) * TAU,
-        shirt: SHIRTS[Math.floor(hash(i, 3, 91) * SHIRTS.length)],
-        sign: Math.floor(hash(i, 5, 92) * 3),
-        paper: PAPERS[Math.floor(hash(i, 7, 93) * PAPERS.length)],
-        mega: false,
-        covered: covered(m, s.tx, s.ty),
-      });
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-    });
-    if (crowdBig && pick.length) {
-      // megaphone person standing out in front of the crowd
-      const s = pick[0];
-      const gx = s.gx + 0.15, gy = s.gy + 1.0;
-      const tx = Math.floor(gx), ty = Math.floor(gy);
-      const i = ty * m.W + tx;
-      if (ty < m.H && m.tile[i] === T_PLAZA && m.occ[i] < 0) {
-        const x = (gx - gy) * HW, y = (gx + gy) * HH;
-        crowd.push({ x, y, tx, ty, phase: 1.3, shirt: '#d83a2e', sign: 0, paper: '#fff', mega: true, covered: covered(m, tx, ty) });
-        maxY = Math.max(maxY, y); minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-      }
-    }
-    crowd.sort((a, b) => a.y - b.y || a.x - b.x);
-    crowdX = (minX + maxX) / 2;
-    crowdTop = minY - 22;
-    crowdMinX = minX - 14; crowdMaxX = maxX + 14; crowdMinY = minY - 40; crowdMaxY = maxY + 14;
-  }
 
-  // ── drawing ──────────────────────────────────────────────────────────────
   function draw(ctx: CanvasRenderingContext2D, sky: SkyState, t: number, S: number, v: View, o: DrawOpts) {
     if (!model || !pol) return;
     const k = clamp(1 / S, 0.7, 3.2);
     const inView = (x: number, y: number, pad: number) => x > v.minX - pad && x < v.maxX + pad && y > v.minY - pad && y < v.maxY + pad;
-    const dark = sky.darkness;
 
     // mayor: gold ring on the ground (front arc only, so it doesn't cut across the house)
     if (mayorObj && inView((mayorObj.minX + mayorObj.maxX) / 2, (mayorObj.minY + mayorObj.maxY) / 2, 120 + mayorObj.height)) {
@@ -206,25 +116,8 @@ export function createPoliticsOverlay(): PoliticsOverlay {
       }
     }
 
-    // protest crowd
-    if (crowd.length && crowdMaxX > v.minX && crowdMinX < v.maxX && crowdMaxY > v.minY && crowdMinY < v.maxY - 0) {
-      let repainted = 0;
-      const seen = new Set<number>();
-      for (const p of crowd) {
-        if (!inView(p.x, p.y, 20)) continue;
-        drawProtester(ctx, p, sky, t, dark);
-        const key = p.ty * 4096 + p.tx;
-        if (S >= 0.5 && p.covered && repainted < MAX_FRONT && !seen.has(key)) {
-          seen.add(key);
-          repainted++;
-          o.front(p.tx, p.ty, (p.tx + 0.5 - p.ty - 0.5) * HW, (p.tx + p.ty + 1) * HH - 8, 30, 22);
-        }
-      }
-    }
-
     // flag + badges on top
     if (mayorObj && inView((mayorObj.minX + mayorObj.maxX) / 2, mayorObj.minY, 80)) drawFlag(ctx, mayorObj, sky, t, k);
-    if (crowd.length && inView(crowdX, crowdTop, 60 * k)) drawBadge(ctx, crowdX, crowdTop, t, k, 'protest');
     if (pol.election?.phase === 'voting' && hallObj) {
       const p = projFor(hallObj);
       const top = p.cy - hallObj.height * 0.7;
@@ -326,116 +219,18 @@ export function createPoliticsOverlay(): PoliticsOverlay {
     ctx.restore();
   }
 
-  function drawProtester(ctx: CanvasRenderingContext2D, p: Person, sky: SkyState, t: number, dark: number) {
-    const bob = Math.abs(Math.sin(t / 300 + p.phase)) * 0.9;
-    // a few signs are raised and lowered out of phase
-    const raise = p.mega ? 0 : Math.max(0, Math.sin(t / 650 + p.phase * 2.3) - 0.35) * 4.5;
-    const x = p.x, y = p.y - bob * 0.6;
-    const pal = sky.palette;
-    ctx.fillStyle = alpha(pal.edge, 0.22);
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y, 2.7, 1.2, 0, 0, TAU);
-    ctx.fill();
-    const body = mix(p.shirt, pal.skyTop, 0.4 * dark);
-    // sign on a stick (behind the head)
-    const armUp = 3 + raise;
-    const stickTop = y - 13 - raise;
-    if (p.mega) {
-      drawMegaphone(ctx, x, y, bob, body, dark, pal.skyTop, t);
-    } else {
-      ctx.strokeStyle = mix('#7a5a38', pal.skyTop, 0.4 * dark);
-      ctx.lineWidth = 0.9;
-      ctx.beginPath();
-      ctx.moveTo(x + 2, y - 3 - bob * 0.3);
-      ctx.lineTo(x + 2, stickTop - 4);
-      ctx.stroke();
-      const sw = 8, sh = 6;
-      const sx = x - 2, sy = stickTop - 4 - sh + 1;
-      ctx.fillStyle = mix(p.paper, pal.skyTop, 0.45 * dark);
-      ctx.strokeStyle = alpha('#22262e', 0.7);
-      ctx.lineWidth = 0.6;
-      ctx.beginPath();
-      ctx.rect(sx, sy, sw, sh);
-      ctx.fill();
-      ctx.stroke();
-      ctx.strokeStyle = mix(SIGN_INK[p.sign], pal.skyTop, 0.3 * dark);
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.lineWidth = 0.9;
-      ctx.lineCap = 'round';
-      if (p.sign === 0) {
-        ctx.beginPath();
-        ctx.moveTo(sx + sw / 2, sy + 1);
-        ctx.lineTo(sx + sw / 2, sy + sh - 2.3);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(sx + sw / 2, sy + sh - 1.1, 0.6, 0, TAU);
-        ctx.fill();
-      } else if (p.sign === 1) {
-        ctx.beginPath();
-        for (let i = 0; i < 3; i++) {
-          ctx.moveTo(sx + 1.4, sy + 1.4 + i * 1.5);
-          ctx.lineTo(sx + sw - 1.4 - (i === 2 ? 2 : 0), sy + 1.4 + i * 1.5);
-        }
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(sx + 2, sy + 1.3);
-        ctx.lineTo(sx + sw - 2, sy + sh - 1.3);
-        ctx.moveTo(sx + sw - 2, sy + 1.3);
-        ctx.lineTo(sx + 2, sy + sh - 1.3);
-        ctx.stroke();
-      }
-      ctx.lineCap = 'butt';
-    }
-    // body + head (like the commuters)
-    ctx.fillStyle = body;
-    ctx.fillRect(x - 1.5, y - 6 - bob, 3, 5.2);
-    // arm holding the stick
-    ctx.fillRect(x + 1, y - 5.6 - bob - (p.mega ? 0 : raise * 0.25), 1.6, 1.3);
-    ctx.fillStyle = mix('#e6c3a0', pal.skyTop, 0.4 * dark);
-    ctx.beginPath();
-    ctx.arc(x, y - 7.7 - bob, 1.7, 0, TAU);
-    ctx.fill();
-    void armUp;
-  }
 
-  function drawMegaphone(ctx: CanvasRenderingContext2D, x: number, y: number, bob: number, body: string, dark: number, sky: string, t: number) {
-    const hy = y - 7.7 - bob;
-    ctx.save();
-    ctx.fillStyle = mix('#e9e9e4', sky, 0.4 * dark);
-    ctx.strokeStyle = alpha('#22262e', 0.7);
-    ctx.lineWidth = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(x + 1.5, hy + 1.6);
-    ctx.lineTo(x + 7, hy - 1.8);
-    ctx.lineTo(x + 7, hy + 4.6);
-    ctx.lineTo(x + 1.5, hy + 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = body;
-    // sound arcs
-    ctx.strokeStyle = alpha('#d83a2e', 0.5 + 0.4 * Math.sin(t / 220));
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.arc(x + 7.4, hy + 1.4, 2.6, -0.9, 0.9);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x + 7.4, hy + 1.4, 4.6, -0.8, 0.8);
-    ctx.stroke();
-    ctx.restore();
-  }
 
-  function drawBadge(ctx: CanvasRenderingContext2D, x: number, topY: number, t: number, k: number, kind: 'protest' | 'ballot') {
+  function drawBadge(ctx: CanvasRenderingContext2D, x: number, topY: number, t: number, k: number, _kind: 'ballot') {
     const r = 11 * k;
-    const bob = Math.sin(t / 520 + (kind === 'ballot' ? 2 : 0)) * 1.6 * k;
+    const bob = Math.sin(t / 520 + 2) * 1.6 * k;
     const bx = x, by = topY - r - 6 * k + bob;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
     ctx.ellipse(bx, by + r + 3 * k, r * 0.7, r * 0.22, 0, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = kind === 'protest' ? '#d9382c' : '#2f5fb8';
+    ctx.fillStyle = '#2f5fb8';
     ctx.beginPath();
     ctx.arc(bx, by, r, 0, TAU);
     ctx.fill();
@@ -452,24 +247,7 @@ export function createPoliticsOverlay(): PoliticsOverlay {
     ctx.scale(r, r);
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#ffffff';
-    if (kind === 'protest') {
-      // megaphone: cone + handle + sound arcs
-      ctx.beginPath();
-      ctx.moveTo(-0.58, -0.18);
-      ctx.lineTo(-0.1, -0.18);
-      ctx.lineTo(0.4, -0.52);
-      ctx.lineTo(0.4, 0.52);
-      ctx.lineTo(-0.1, 0.18);
-      ctx.lineTo(-0.58, 0.18);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillRect(-0.4, 0.14, 0.2, 0.42);
-      ctx.lineWidth = 0.1;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(0.42, 0, 0.3, -0.9, 0.9);
-      ctx.stroke();
-    } else {
+    {
       // ballot box with a slot and a paper going in
       ctx.beginPath();
       ctx.rect(-0.52, -0.02, 1.04, 0.6);

@@ -265,7 +265,7 @@ export function createTownPanel(): TownPanel {
         bar.style.setProperty('--w', `${v}%`);
         li.append(bar, el('span', { class: 'kb-vh' }, `Approval: ${v} out of 100, ${approvalWord(v)}`));
         ul.append(li);
-        kids.push(ul, el('p', { class: 'kb-town-note' }, 'The average of the four city stats, minus the share of this week\u2019s active residents who protest.'));
+        kids.push(ul, el('p', { class: 'kb-town-note' }, 'How the town is doing: the average of the four city stats.'));
       }
       if (pol) {
         kids.push(el('h4', { class: 'kb-town-sub' }, 'What the mayor can do'));
@@ -280,8 +280,7 @@ export function createTownPanel(): TownPanel {
     }
     const e = pol?.election;
     if (e) {
-      kids.push(el('h4', { class: 'kb-town-sub' }, e.recall ? 'Recall election' : 'Election'));
-      if (e.recall) kids.push(el('p', {}, 'Enough residents protested, so Kinsburg is choosing a mayor again. The mayor may run again.'));
+      kids.push(el('h4', { class: 'kb-town-sub' }, 'Election'));
       if (e.phase === 'nominations') {
         kids.push(el('p', {}, el('b', {}, `Nominations close ${closesIn(e.nominationsCloseAt)}.`), ' Then the town votes for 2 days.'));
         if (e.candidates.length) kids.push(el('p', { class: 'kb-town-note' }, 'Running so far:'), handleList(e.candidates, 'Candidates so far'));
@@ -293,23 +292,6 @@ export function createTownPanel(): TownPanel {
         if (poll) kids.push(pollBlock(poll, t.account));
         else if (e.candidates.length) kids.push(handleList(e.candidates, 'Candidates'));
       }
-    }
-    const pr = pol?.protest;
-    if (pr && m) {
-      kids.push(el('h4', { class: 'kb-town-sub' }, 'Protests'));
-      const need = Math.max(1, pr.threshold);
-      const shown = Math.min(pr.count, need);
-      const ul = el('ul', { class: 'kb-poll-options kb-stats-list' });
-      const li = el('li', { class: 'kb-poll-option' });
-      li.append(el('span', { class: 'kb-poll-label' }, `${pr.count.toLocaleString()} of ${need.toLocaleString()} protesters needed for a recall`), el('span', { class: 'kb-poll-count' }, `${Math.round((shown / need) * 100)}%`));
-      const bar = el('span', { class: 'kb-poll-bar', 'aria-hidden': 'true' });
-      bar.style.setProperty('--w', `${(shown / need) * 100}%`);
-      li.append(bar);
-      ul.append(li);
-      kids.push(ul);
-      kids.push(el('p', { class: 'kb-town-note' }, `Counted over 7 days, from ${pr.active.toLocaleString()} residents active this week. At the threshold a recall election starts at once.`));
-      if (pr.recent.length) kids.push(el('p', { class: 'kb-town-note' }, 'Recent protesters:'), handleList(pr.recent.slice(0, 12), 'Recent protesters'));
-      kids.push(el('p', {}, 'Not happy with the mayor? Comment ', cmd('PROTEST'), ' on any post. One per person per term.'));
     }
     return section('mayor', 'Mayor', ...kids);
   }
@@ -366,7 +348,7 @@ export function createTownPanel(): TownPanel {
       ),
     );
 
-    // mayor, elections and protests
+    // mayor and elections
     body.append(mayorSection(t));
 
     // votes (an automatic election's poll is shown with the election above)

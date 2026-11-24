@@ -61,8 +61,8 @@ export interface CityView {
    */
   setIncidents(incidents: TownIncident[]): void;
   /**
-   * Politics on the map: a protest crowd with signs on the town square while people are
-   * protesting, a flag on the mayor's house, yard signs at candidates' houses during an election.
+   * Politics on the map: a flag on the mayor's house, yard signs at candidates' houses during an
+   * election, and a ballot-box badge over the town hall while voting.
    */
   setPolitics(politics: TownPolitics | null): void;
   /** Sponsor billboards on the town square (rotates every 8 s when there are several). */

@@ -157,13 +157,12 @@ curl -s -X POST https://kinsburg.com/admin/coins -H "Authorization: Bearer YOUR_
 
 To pause incidents starting on their own, set `SIM_RANDOM_INCIDENTS` to `"false"` in `wrangler.jsonc` and deploy.
 
-## Mayor, elections and protests
+## Mayor and elections
 
 It all runs itself:
 
 - **Elections.** When there's no mayor (or the two-week term ends), nominations open for 3 days: residents comment `RUN FOR MAYOR` on any post (up to 6). Then everyone votes for 2 days by commenting `VOTE @name` on any post, one vote each. The winner is mayor for 14 days. A lone candidate wins unopposed; with nobody standing, nominations get extended.
-- **Approval** is how the city is doing (the four stats) minus the share of active residents protesting.
-- **Protests.** Unhappy residents comment `PROTEST` (once per person per term). When at least 5 people, and a quarter of the residents active this week, have protested in 7 days, a **recall election** starts at once; the mayor may run again. Protests only ever come from real comments.
+- **Approval** is how the city is doing: the average of the four stats. Kinsburg keeps things positive, so there are no protests or recalls.
 - **The mayor's power.** Once a day the mayor can comment `FUND HEALTH`, `FUND SAFETY`, `FUND EDUCATION` or `FUND PARKS`: 200 coins from the treasury raise that stat by 6.
 
 **Announcements.** When an incident starts or an election moves on, @kinsburgtown comments under its latest post ("🔥 Kitchen fire at @sam's house! Firefighters: comment RESPOND (2 needed)."). They share the welcome replies' pace (and pause with them if Instagram pushes back), one per 15-minute check, and anything older than 12 hours is dropped. Turn them off with `IG_CALLS_ENABLED` = `"false"` in `wrangler.jsonc`.
