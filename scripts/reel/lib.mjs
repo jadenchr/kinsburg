@@ -141,3 +141,44 @@ export function ambientArgs(duration, outFile, seed = 0) {
     '-ar', '48000', '-ac', '2', '-c:a', 'pcm_s16le', outFile,
   ];
 }
+
+/**
+ * Make a video loop seamlessly on Instagram: its last `fade` seconds dissolve into its own first
+ * frame (landing on it exactly at the final frame), and the sound gets a tiny fade at both ends so
+ * the join doesn't click. Re-encodes in place with the reels' settings and tags the file, so running
+ * it twice does nothing. Returns false if the file was already looped.
+ */
+export async function loopVideo(file, { fade = 0.5, ffmpeg = 'ffmpeg', ffprobe = 'ffprobe', maxrate = '8M', bufsize = '16M' } = {}) {
+  const { mkdtempSync, renameSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const info = JSON.parse(await run(ffprobe, ['-v', 'error', '-show_entries', 'format=duration:format_tags=comment:stream=codec_type,width,height,r_frame_rate', '-of', 'json', file]));
+  if (String(info.format?.tags?.comment ?? '').includes('kinsburg-loop')) return false;
+  const v = info.streams.find((s) => s.codec_type === 'video');
+  const hasAudio = info.streams.some((s) => s.codec_type === 'audio');
+  const D = Number(info.format.duration);
+  const [num, den] = String(v.r_frame_rate).split('/').map(Number);
+  const fps = num / (den || 1);
+  const tmp = mkdtempSync(join(tmpdir(), 'kinsburg-loop-'));
+  try {
+    const out = join(tmp, 'looped.mp4');
+    // the dissolve finishes four frames before the end, so the last frames *are* frame one
+    // (xfade lands about a frame late; measured)
+    const offset = Math.max(0, D - fade - 4 / fps);
+    // frame one is taken straight from the stream and repeated (a saved image shifts colours slightly)
+    const hold = Math.ceil((fade + 0.5) * fps);
+    const vf = `[0:v]format=yuv420p,split[m0][f0];[f0]trim=end_frame=1,loop=loop=${hold}:size=1:start=0,setpts=N/(${fps}*TB),settb=AVTB[s];[m0]settb=AVTB[m];[m][s]xfade=transition=fade:duration=${fade}:offset=${offset.toFixed(4)},format=yuv420p[v]`;
+    const af = hasAudio ? `;[0:a]afade=t=in:st=0:d=0.06,afade=t=out:st=${(D - 0.06).toFixed(4)}:d=0.06[a]` : '';
+    await run(ffmpeg, [
+      '-hide_banner', '-loglevel', 'error', '-y', '-i', file,
+      '-filter_complex', vf + af, '-map', '[v]', ...(hasAudio ? ['-map', '[a]'] : []), '-t', D.toFixed(4), '-r', String(fps),
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-maxrate', maxrate, '-bufsize', bufsize, '-pix_fmt', 'yuv420p', '-color_range', 'tv',
+      ...(hasAudio ? ['-c:a', 'aac', '-b:a', '160k'] : []),
+      '-movflags', '+faststart', '-metadata', 'comment=kinsburg-loop', out,
+    ]);
+    renameSync(out, file);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  return true;
+}

@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { ambientArgs, parseArgs, probe, run, sleep } from './lib.mjs';
+import { ambientArgs, loopVideo, parseArgs, probe, run, sleep } from './lib.mjs';
 import { BUILD_BY_KIND } from '../../shared/builds.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -231,7 +231,7 @@ async function film(page, tmp, name, shot) {
 }
 
 /** Shots joined by dissolves (each shot starts at `at`), every overlay on the global timeline, narration over a quiet bed. */
-async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, loop = false, folder, rewriteCaption = false }) {
+async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, loop = true, exactLoop = false, folder, rewriteCaption = false }) {
   const where = folder ?? FOLDER[id] ?? `drafts/${id}`;
   const dir = join(OUT, where);
   const name = `kinsburg-${where.split('/').pop()}`;
@@ -304,6 +304,8 @@ async function finish(tmp, id, { shots, overlays, voice, duration, caption, cove
   // how the cover looks as a profile-grid tile (Instagram keeps the middle 3:4)
   await run(FFMPEG, ['-hide_banner', '-y', '-i', join(dir, `${name}-cover.jpg`), '-f', 'lavfi', '-i', 'color=c=0x2b2f36:s=386x514', '-f', 'lavfi', '-i', 'color=c=0x8a6f5a:s=386x514',
     '-filter_complex', '[0]crop=1080:1440:0:240,scale=386:514[t];[1][t][2]hstack=3', '-frames:v', '1', join(dir, `${name}-grid-preview.jpg`)]);
+  // every reel loops on Instagram: the end dissolves into frame one (exact loops are built that way)
+  if (loop && !exactLoop) await loopVideo(mp4, { ffmpeg: FFMPEG, ffprobe: process.env.FFPROBE ?? 'ffprobe' });
   const info = await probe(mp4, process.env.FFPROBE ?? 'ffprobe').catch((e) => ({ ok: false, error: e.message }));
   log(`${relative(ROOT, mp4)}  ${info.ok ? '✓ Instagram specs' : '✗ check specs ' + JSON.stringify(info)}  ${duration.toFixed(1)} s`);
 }
@@ -827,7 +829,7 @@ async function reelT2({ tmp, page, R }) {
   overlays.push({ png: await bubble(tmp, 'T2', 660), from: ls[5].start, to: because, fade: 0.2 });
 
   await finish(tmp, 'T2', {
-    xf, loop: true,
+    xf, loop: true, exactLoop: true,
     shots, overlays, voice: v, duration: D,
     caption: `6… 7. That's how many people live in this town. 🏡\n\nKinsburg is a cozy isometric city where every house belongs to a real person on Instagram. Resident #${n} became ${an} ${job}. House #${next} is still empty.\n\nComment MOVE IN and it's yours. Want to be in the next one? Comment CAST ME.\n\n#kinsburg #citybuilder #isometric #cozygames #67`,
     coverBg: await thumbStill(page, tmp, 'T2', { target: 'actor:jadie', zoom: 8.2, y: 0.74, actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'sixseven' }, { t: 1, ...home, pose: 'sixseven' }] }] }),

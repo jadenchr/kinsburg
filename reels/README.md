@@ -8,6 +8,8 @@ One folder per Reel, grouped by series. Every folder has:
 
 Hashtag choices and what's working for similar accounts: [RESEARCH.md](RESEARCH.md).
 
+**Every video loops.** Its last half-second dissolves back into its own first frame, so when Instagram replays it there's no jump (the 6 7 Reel was built as an exact loop instead). New Reels, daily episodes and the daily GitHub Reel loop automatically. To loop any other video: `node scripts/reel/loop.mjs path/to/video.mp4` (it skips videos that already loop). If you add a sound in Instagram, pick one that doesn't fade out at the end.
+
 ## Daily episodes
 
 `episodes/episode-NN/` holds one "Kinsburg · Episode N" per day, made from that day's 12:00 UTC build run: residents yesterday → today, the city's money (move-ins and new followers at $1,500 each), the comment wall with real handles, what got built with its price, what's left and what's next. Jadie narrates. The caption is written from the same data, so it's always right for that day; post it as it is.

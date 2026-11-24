@@ -39,7 +39,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync
 import { dirname, join, resolve, extname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { parseArgs, run, sleep, probe, rgba, strHash, ambientArgs } from './lib.mjs';
+import { ambientArgs, loopVideo, parseArgs, probe, rgba, run, sleep, strHash } from './lib.mjs';
 import { SERIES, buildCaption, seriesForDate, recentHeroes, politicsLine } from './series.mjs';
 import { BUILD_BY_KIND } from '../../shared/builds.mjs';
 
@@ -386,6 +386,8 @@ async function main() {
   await run(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(Math.max(0, DUR - 0.75)), '-i', mp4, '-frames:v', '1', '-q:v', '2', cover]);
 
   writeFileSync(join(OUT, 'caption.txt'), caption + '\n');
+  // loop on Instagram: the end dissolves into frame one (after the cover is taken from the end)
+  await loopVideo(mp4, { ffmpeg: FFMPEG, ffprobe: FFPROBE, maxrate: MAXRATE, bufsize: BUFSIZE });
   const info = await probe(mp4, FFPROBE).catch((e) => ({ ok: false, error: e.message }));
   const manifest = {
     date: DATE,
