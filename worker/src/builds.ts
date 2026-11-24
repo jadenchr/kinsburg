@@ -63,7 +63,7 @@ export async function runDailyBuilds(env: Env, now = Date.now(), force = false) 
       `SELECT handle FROM build_requests WHERE status = 'open' AND kind = ?1 ORDER BY likes DESC, created_at ASC LIMIT 1`,
     ).bind(t.kind).first<{ handle: string }>();
     const row = await db.prepare(
-      `INSERT INTO builds (kind, by_handle, day, likes, requests) VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id`,
+      `INSERT INTO builds (kind, by_handle, day, likes, requests, pop) VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(number), 0) FROM residents)) RETURNING id`,
     ).bind(t.kind, by?.handle ?? 'kinsburgtown', day, t.likes ?? 0, t.n).first<{ id: number }>();
     await db.batch([
       db.prepare(`UPDATE build_requests SET status = 'built', build_id = ?1 WHERE status = 'open' AND kind = ?2`).bind(row!.id, t.kind),
@@ -80,7 +80,7 @@ export async function runDailyBuilds(env: Env, now = Date.now(), force = false) 
 export async function getBuildsPublic(env: Env, now = Date.now()) {
   const db = env.DB;
   const [builds, requests, holds, besties] = await db.batch([
-    db.prepare(`SELECT id, kind, by_handle AS by, day, likes FROM builds WHERE removed = 0 ORDER BY id LIMIT 2000`),
+    db.prepare(`SELECT id, kind, by_handle AS by, day, likes, pop FROM builds WHERE removed = 0 ORDER BY id LIMIT 2000`),
     db.prepare(
       `SELECT kind, SUM(likes) AS likes, COUNT(*) AS count FROM build_requests WHERE status = 'open' AND created_at >= ?1
        GROUP BY kind ORDER BY likes DESC, count DESC LIMIT 10`,
@@ -89,7 +89,7 @@ export async function getBuildsPublic(env: Env, now = Date.now()) {
     db.prepare(`SELECT a, b FROM besties ORDER BY created_at LIMIT 5000`),
   ]);
   return {
-    builds: builds.results as Array<{ id: number; kind: string; by: string; day: number; likes: number }>,
+    builds: builds.results as Array<{ id: number; kind: string; by: string; day: number; likes: number; pop: number | null }>,
     requests: requests.results as Array<{ kind: string; likes: number; count: number }>,
     holds: (holds.results as Array<{ number: number; expires_at: string }>).map((h) => ({
       number: h.number,

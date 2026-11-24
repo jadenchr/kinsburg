@@ -5,7 +5,7 @@ import type { TownIncident, TownPolitics } from '../data/town';
 
 /** Something the city built because commenters asked for it (see shared/builds.mjs). */
 export interface BuildInfo {
-  /** 1-based build order, never reused: build #k stands on build site #k */
+  /** 1-based build order, never reused (assignBuildSites places builds in this order) */
   id: number;
   kind: string;
   /** handle of who asked */
@@ -13,6 +13,8 @@ export interface BuildInfo {
   /** city day it was built */
   day: number;
   likes: number;
+  /** highest resident number when it was built; picks its site (missing = today's city) */
+  pop?: number | null;
 }
 
 /** A house plot kept empty for a bestie. */

@@ -67,7 +67,8 @@ export interface TownInfo {
   /** the city simulation; missing on an older Worker */
   sim?: TownSim;
   /** what commenters got built, oldest first (id = build order, never reused); missing on an older Worker */
-  builds?: { id: number; kind: string; by: string; day: number; likes: number }[];
+  /** pop: highest resident number when it was built (chooses its site; see assignBuildSites) */
+  builds?: { id: number; kind: string; by: string; day: number; likes: number; pop?: number | null }[];
   /** plots held for a bestie: the vacant lot's resident number, and days left */
   holds?: { number: number; days: number }[];
   /** pairs of resident handles who are besties */

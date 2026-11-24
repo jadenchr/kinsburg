@@ -533,9 +533,16 @@ export const createCityView: CreateCityView = (canvas) => {
       drawRing(ctx, { ...p, s: 64 * size }, 0.62);
       drawEntry(ctx, o, lk, detail);
     }
-    // repaint what stands in front of it so the ring/house doesn't cover it
+    // repaint what stands in front of it so the ring/house doesn't cover it. A build is the star of
+    // its shot (the "Built today" Reel, or a tap): what stands in front goes see-through instead,
+    // since builds often sit behind houses on the city's little free land
     const r: Region = { x0: o.x, y0: o.y, x1: o.x + o.w + 4, y1: o.y + o.h + 4, dMin: -1e9, dMax: 1e9, sMin: o.depth + 1, sMax: 1e9 };
-    drawObjects(ctx, r, detail);
+    if (o.kind === 'build') {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      drawObjects(ctx, r, detail);
+      ctx.restore();
+    } else drawObjects(ctx, r, detail);
     if (S < 1.6) {
       // zoomed out the house is a few pixels: a solid gold dot just above the roof marks it
       ctx.save();

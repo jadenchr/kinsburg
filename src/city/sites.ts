@@ -11,10 +11,12 @@
 //    water, trees or roads that would make it look wrong. Because a house can only ever stand on a
 //    grass tile with a road beside it, and every site keeps a tile of clearance from all of those,
 //    a site can never collide with a house that moves in later (even in a half-filled chunk).
-//  • Inside a chunk, sites are picked greedily in a seeded order (parks first), 3 tiles apart.
+//  • Inside a chunk, sites come in tiers so builds are seen: the town square first, then open
+//    ground with nothing in front, then the rest; within a tier parks first, 2 tiles apart.
 //  • Build #k goes on site k. Secrets are chosen first and never share a tile with a site.
 import { TILE, type CityData } from '../types';
-import { hash } from './iso';
+import { HH, HW, hash } from './iso';
+import { capacityFor } from '../../shared/city-layout.mjs';
 
 const P = 20; // CHUNK in shared/city-layout.mjs
 const HP = P / 2;
@@ -26,6 +28,8 @@ export interface Spot {
   y: number;
   /** index of the chunk in unlock order */
   chunk: number;
+  /** build sites only: 0 town square, 1 open (nothing in front), 2 partly hidden */
+  tier?: number;
 }
 
 export type SecretKind = 'garden' | 'well' | 'fairy' | 'chest' | 'bench' | 'gnomes';
@@ -50,6 +54,8 @@ export const SECRETS: { kind: SecretKind; name: string }[] = [
 export interface Sites {
   builds: Spot[];
   secrets: SecretSpot[];
+  /** chunk (unlock index) of each house plot, in move-in order */
+  houseChunks: number[];
 }
 
 interface Cand {
@@ -63,6 +69,10 @@ interface Cand {
   crowd: number;
   /** houses, shops or landmarks on the tiles in front (towards the viewer) that would hide a tall sprite */
   front: number;
+  /** tree tiles in front, which hide a sprite as well as a house does */
+  frontTrees: number;
+  /** a landmark (town hall, fountain, market…) touches this tile */
+  byLandmark: boolean;
 }
 
 /** The chunk (by unlock index) a secret lives in, and what tile it needs. If that chunk isn't unlocked yet, the secret simply isn't there yet. */
@@ -86,7 +96,7 @@ export function computeSites(data: CityData): Sites {
 }
 
 function compute(data: CityData): Sites {
-  const empty: Sites = { builds: [], secrets: [] };
+  const empty: Sites = { builds: [], secrets: [], houseChunks: [] };
   const W = data.width, H = data.height;
   // width = (2R + 1) * CHUNK + 1 + 2 * MARGIN
   const R = ((W - 1 - 2 * MARGIN) / P - 1) / 2;
@@ -123,7 +133,11 @@ function compute(data: CityData): Sites {
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (at(x, y) !== TILE.grass || stand[y * W + x] === 1) continue;
-      if (at(x - 1, y) === TILE.road || at(x + 1, y) === TILE.road || at(x, y - 1) === TILE.road || at(x, y + 1) === TILE.road) lotish[y * W + x] = 1;
+      // the border roads of a chunk may only appear once the chunk next to it is built, so a tile
+      // beside the border counts as a possible house lot from the start (keeps sites stable)
+      const c = chunkOf(x, y);
+      const byBorder = c.lx === 1 || c.ly === 1 || c.lx === P - 1 || c.ly === P - 1;
+      if (byBorder || at(x - 1, y) === TILE.road || at(x + 1, y) === TILE.road || at(x, y - 1) === TILE.road || at(x, y + 1) === TILE.road) lotish[y * W + x] = 1;
     }
   // Neighbour checks never look into the next chunk (it may not be unlocked yet, and what it
   // becomes would then change this chunk's sites): outside this chunk's interior counts as nothing.
@@ -132,7 +146,7 @@ function compute(data: CityData): Sites {
     for (let dy = -r; dy <= r; dy++)
       for (let dx = -r; dx <= r; dx++) {
         const lx = c0.lx + dx, ly = c0.ly + dy;
-        if (lx < 0 || ly < 0 || lx > P || ly > P) continue;
+        if (lx < 1 || ly < 1 || lx >= P || ly >= P) continue; // the border lines change when the next chunk is built
         if (f(x + dx, y + dy)) return true;
       }
     return false;
@@ -142,27 +156,35 @@ function compute(data: CityData): Sites {
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const ch = at(x, y);
-      if (ch !== TILE.grass && ch !== TILE.park && ch !== TILE.trees && ch !== TILE.sand) continue;
+      if (ch !== TILE.grass && ch !== TILE.park && ch !== TILE.trees && ch !== TILE.sand && ch !== TILE.plaza) continue;
       const c = chunkOf(x, y);
       if (c.lx < 1 || c.lx >= P || c.ly < 1 || c.ly >= P) continue; // roads run along the border
       const ci = chunkIndex.get(c.cx + ',' + c.cy);
       if (ci === undefined) continue; // countryside: not part of the town yet
+      // the newest chunk is still filling in (its parks, trees and lots appear as people move in),
+      // so nothing is placed there until the next chunk opens; the centre chunk is always complete
+      if (ci === chunks.length - 1 && ci !== 0) continue;
       const i = y * W + x;
       if (stand[i] || lotish[i]) continue;
       let crowd = 0;
       near(x, y, 1, (xx, yy) => ((xx !== x || yy !== y) && xx >= 0 && yy >= 0 && xx < W && yy < H && (lotish[yy * W + xx] === 1 || stand[yy * W + xx] === 1) ? (crowd++, false) : false));
       const c0 = c;
-      let front = 0;
-      for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2], [2, 0], [0, 2], [2, 2]] as const) {
+      let front = 0, frontTrees = 0;
+      // the tiles drawn in front of this one, up to 3 steps (tall houses and the monument reach that far)
+      for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2], [2, 0], [0, 2], [2, 2], [3, 1], [1, 3], [3, 2], [2, 3], [3, 3]] as const) {
         const xx = x + dx, yy = y + dy;
         const c1 = chunkOf(xx, yy);
-        if (c1.lx < 1 || c1.ly < 1 || c1.lx >= P || c1.ly >= P || c1.cx !== c0.cx || c1.cy !== c0.cy) continue;
-        if (xx < W && yy < H && (lotish[yy * W + xx] === 1 || stand[yy * W + xx] === 1)) front++;
+        // past this chunk's edge we can't know what will stand there (the next chunk may not exist
+        // yet), so count it as blocked: only sites whose whole view lies inside the chunk are "open"
+        if (c1.lx < 1 || c1.ly < 1 || c1.lx >= P || c1.ly >= P || c1.cx !== c0.cx || c1.cy !== c0.cy) { front++; continue; }
+        if (xx < W && yy < H && (lotish[yy * W + xx] === 1 || stand[yy * W + xx] >= 1)) front++; // any house tile, not just its road side
+        else if (at(xx, yy) === TILE.trees) frontTrees++;
       }
+      const byLandmark = near(x, y, 1, (xx, yy) => xx >= 0 && yy >= 0 && xx < W && yy < H && stand[yy * W + xx] === 1);
       let trees = 0;
       near(x, y, 1, (xx, yy) => ((xx !== x || yy !== y) && at(xx, yy) === TILE.trees ? (trees++, false) : false));
       perChunk[ci].push({
-        x, y, ch, trees, crowd, front,
+        x, y, ch, trees, crowd, front, frontTrees, byLandmark,
         h: hash(x - origin, y - origin, 4242),
         water: near(x, y, 2, (xx, yy) => at(xx, yy) === TILE.water),
       });
@@ -187,34 +209,93 @@ function compute(data: CityData): Sites {
     }
   });
 
-  // parks first, then open grass, then clearings among the trees
-  const rank = (c: Cand) => (c.ch === TILE.park ? 0 : c.ch === TILE.grass ? 1 : 1.6) + c.h * 0.9 + c.crowd * 0.3 + c.front * 0.8;
+  // Builds should be seen, so inside each chunk sites come in three tiers:
+  //   0  the town square (paved, open, in every Reel), clear of its landmarks
+  //   1  open ground with nothing in front (no house, shop or tree on the tiles towards the viewer)
+  //   2  everything else that is safe, used only once a chunk's better sites are taken
+  // Tiers are per chunk, so the order stays prefix-stable as the city grows.
+  // The sponsor billboard stands in the south-west of the town square (drawBillboard in index.ts:
+  // anchored 2 tiles left of and 4.2 below the town hall, a 124 x 86 px panel). Keep square sites
+  // out of its way so it never hides a build (a sprite is up to 114 px tall and a tile wide).
+  const th = data.landmarks.find((l) => l.kind === 'townhall');
+  const underBillboard = (c: Cand) => {
+    if (!th) return false;
+    const gx = th.x - 2, gy = th.y + th.h + 4.2;
+    const bx = (gx - gy) * HW, by = (gx + gy) * HH + HH;
+    const sx = (c.x - c.y) * HW, sy = (c.x + c.y + 1) * HH;
+    const pad = 10;
+    return sx + HW > bx - 62 - pad && sx - HW < bx + 62 + pad && sy + HH > by - 86 - pad && sy - 114 < by + pad;
+  };
+  const tier = (c: Cand) => (c.ch === TILE.plaza ? 0 : c.front === 0 && c.frontTrees === 0 && c.crowd <= 1 ? 1 : 2);
+  // within a tier: parks, then open grass, then clearings among the trees
+  const rank = (c: Cand) => (c.ch === TILE.park || c.ch === TILE.plaza ? 0 : c.ch === TILE.grass ? 1 : 1.6) + c.h * 0.9 + c.crowd * 0.3 + c.front * 0.8;
   const builds: Spot[] = [];
   perChunk.forEach((list, ci) => {
     const pick: Cand[] = [];
     const ordered = list
       .filter((c) => c.ch !== TILE.sand)
+      .filter((c) => !(c.ch === TILE.plaza && (c.byLandmark || underBillboard(c)))) // keep the town hall, fountain, market and billboard readable
       .filter((c) => !near(c.x, c.y, 1, (xx, yy) => at(xx, yy) === TILE.water))
-      .sort((a, b) => rank(a) - rank(b));
+      .sort((a, b) => tier(a) - tier(b) || rank(a) - rank(b));
     for (const c of ordered) {
       if (taken[ci].some((t) => cheb(t, c) < 2)) continue;
       if (pick.some((t) => cheb(t, c) < 2)) continue;
       pick.push(c);
     }
-    // spread out: each next site is the one farthest from those already used, so early builds
-    // don't crowd each other (ties and the first pick follow the seeded rank)
-    const left = [...pick];
+    // spread out within each tier: each next site is the one farthest from those already used,
+    // so early builds don't crowd each other (ties and the first pick follow the seeded rank)
     const used: Cand[] = [];
-    while (left.length) {
-      let best = 0, bestD = -1;
-      left.forEach((c, k) => {
-        const d = used.length ? Math.min(...used.map((u) => (u.x - c.x) ** 2 + (u.y - c.y) ** 2)) : 1e9 - k;
-        if (d > bestD) { bestD = d; best = k; }
-      });
-      const [c] = left.splice(best, 1);
-      used.push(c);
-      builds.push({ x: c.x, y: c.y, chunk: ci });
+    for (const t of [0, 1, 2]) {
+      const left = pick.filter((c) => tier(c) === t);
+      while (left.length) {
+        let best = 0, bestD = -1;
+        left.forEach((c, k) => {
+          const d = used.length ? Math.min(...used.map((u) => (u.x - c.x) ** 2 + (u.y - c.y) ** 2)) : 1e9 - k;
+          if (d > bestD) { bestD = d; best = k; }
+        });
+        const [c] = left.splice(best, 1);
+        used.push(c);
+        builds.push({ x: c.x, y: c.y, chunk: ci, tier: t });
+      }
     }
   });
-  return { builds, secrets };
+  const houseChunks = data.plots
+    .filter((p) => p.kind === 'house')
+    .sort((a, b) => a.id - b.id)
+    .map((p) => { const c = chunkOf(p.x, p.y); return chunkIndex.get(c.cx + ',' + c.cy) ?? 0; });
+  return { builds, secrets, houseChunks };
+}
+
+/**
+ * Where each build stands. Builds are placed in id order; each takes the best free site (town
+ * square, then open ground, then the rest; earlier chunks first within a tier) among the chunks
+ * that existed when it was built (its `pop`, the highest resident number then). That depends only
+ * on numbers stored with the builds, so a build never moves when the city grows. A build without
+ * a pop (demo data) uses today's city.
+ */
+export function assignBuildSites(sites: Sites, builds: { id: number; pop?: number | null }[]): Map<number, Spot> {
+  const out = new Map<number, Spot>();
+  const chunkCount = sites.houseChunks.length ? sites.houseChunks[sites.houseChunks.length - 1] + 1 : 0;
+  // the city builds chunks until it has capacityFor(n) house plots, so the last one needed is that plot's chunk
+  const chunksAt = (pop: number) => {
+    const need = Math.min(sites.houseChunks.length, capacityFor(Math.max(1, pop)));
+    return need ? sites.houseChunks[need - 1] + 1 : chunkCount;
+  };
+  const used = new Uint8Array(sites.builds.length);
+  for (const b of [...builds].sort((x, y) => x.id - y.id)) {
+    if (out.has(b.id)) continue;
+    // only chunks that were complete then: the newest one was still filling in (see computeSites)
+    const limit = Math.max(1, (b.pop ? chunksAt(b.pop) : chunkCount) - 1);
+    let best = -1;
+    for (let i = 0; i < sites.builds.length; i++) {
+      const s = sites.builds[i];
+      if (used[i] || s.chunk >= limit) continue;
+      if (best < 0 || (s.tier ?? 2) < (sites.builds[best].tier ?? 2)) best = i;
+      if ((s.tier ?? 2) === 0) break; // nothing beats the town square
+    }
+    if (best < 0) continue;
+    used[best] = 1;
+    out.set(b.id, sites.builds[best]);
+  }
+  return out;
 }

@@ -552,6 +552,7 @@ try {
   j = await r.json();
   ok(j.run?.built?.join() === 'ferris,pool', 'the most-liked requests get built, most likes first', j.run);
   ok(j.builds?.find((x) => x.kind === 'pool')?.by === 'lurker' && j.builds?.find((x) => x.kind === 'ferris')?.likes === 9, 'each build credits the most-liked asker', j.builds);
+  ok(j.builds?.every((x) => Number.isInteger(x.pop) && x.pop > 0), 'each build records the city size it was made at (it picks the site)', j.builds?.map((x) => x.pop));
   j = await (await admin('/admin/builds', { run: true })).json();
   ok(j.run?.built?.length === 0 && j.builds.length === 2, 'built requests are not built twice', j.run);
 

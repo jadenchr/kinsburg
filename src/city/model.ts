@@ -4,7 +4,7 @@ import { TILE, type CityData, type Landmark, type Plot, type Resident } from '..
 import { houseTop } from './house';
 import { homeTop } from './homes';
 import { HW, HH, hash } from './iso';
-import { computeSites, type SecretSpot } from './sites';
+import { assignBuildSites, computeSites, type SecretSpot } from './sites';
 import type { BuildInfo, Hold } from './api';
 import { BUILD_HEIGHT } from './builds';
 
@@ -189,8 +189,9 @@ export function buildModel(data: CityData, extras: Extras = { builds: [], holds:
   const bySecret = new Map<number, number>();
   {
     const sites = computeSites(data);
+    const placed = assignBuildSites(sites, extras.builds);
     for (const b of [...extras.builds].sort((a, z) => a.id - z.id)) {
-      const site = sites.builds[b.id - 1];
+      const site = placed.get(b.id);
       if (!site || byBuild.has(b.id) || occ[site.y * W + site.x] >= 0) continue;
       byBuild.set(b.id, add({ kind: 'build', x: site.x, y: site.y, w: 1, h: 1, seed: (b.id * 2654435761) >>> 0, height: BUILD_HEIGHT[b.kind] ?? 60, reach: 40, build: b }, true));
     }
