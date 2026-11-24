@@ -464,21 +464,26 @@ export function createSimOverlay(): SimOverlay {
   function drawScaffold(ctx: CanvasRenderingContext2D, sky: SkyState, o: Obj) {
     const p = projFor(o);
     const H = o.height / 64;
-    const Hs = H * 0.56;
+    // Villas and skyscrapers aren't house-shaped: the house numbers below would put the tarp and
+    // planks in mid-air across the building. They get scaffolding round the ground floors instead.
+    const special = !!o.resident?.home;
+    const Hs = special ? Math.min(H * 0.56, 0.62) : H * 0.56;
     const e = 0.46;
     const wood = material(sky, '#b98a50');
-    // blue tarp draped over the roof
-    const tarp = material(sky, '#2f78c4');
-    const zt = H * 0.6;
-    // a flat tarp lashed over the roof, with a fold line and a lighter corner
-    fillPoly(ctx, p, [-0.26, -0.22, zt, 0.26, -0.22, zt, 0.26, 0.22, zt, -0.26, 0.22, zt], tarp.top);
-    fillPoly(ctx, p, [-0.26, -0.22, zt, 0.02, -0.22, zt, -0.1, 0.22, zt, -0.26, 0.22, zt], tarp.l);
-    ctx.strokeStyle = alpha('#ffffff', 0.5);
-    ctx.lineWidth = 0.9;
-    ctx.beginPath();
-    ctx.moveTo(projX(p, -0.26, 0), projY(p, -0.26, 0, zt));
-    ctx.lineTo(projX(p, 0.26, 0), projY(p, 0.26, 0, zt));
-    ctx.stroke();
+    if (!special) {
+      // blue tarp draped over the roof
+      const tarp = material(sky, '#2f78c4');
+      const zt = H * 0.6;
+      // a flat tarp lashed over the roof, with a fold line and a lighter corner
+      fillPoly(ctx, p, [-0.26, -0.22, zt, 0.26, -0.22, zt, 0.26, 0.22, zt, -0.26, 0.22, zt], tarp.top);
+      fillPoly(ctx, p, [-0.26, -0.22, zt, 0.02, -0.22, zt, -0.1, 0.22, zt, -0.26, 0.22, zt], tarp.l);
+      ctx.strokeStyle = alpha('#ffffff', 0.5);
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(projX(p, -0.26, 0), projY(p, -0.26, 0, zt));
+      ctx.lineTo(projX(p, 0.26, 0), projY(p, 0.26, 0, zt));
+      ctx.stroke();
+    }
     // poles at the three outward corners
     ctx.strokeStyle = wood.dark;
     ctx.lineWidth = 1.7;

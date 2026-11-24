@@ -17,6 +17,7 @@
 import { TILE, type CityData } from '../types';
 import { HH, HW, hash } from './iso';
 import { capacityFor } from '../../shared/city-layout.mjs';
+import { RESIDENTIAL_ONLY } from '../../shared/builds.mjs';
 
 const P = 20; // CHUNK in shared/city-layout.mjs
 const HP = P / 2;
@@ -271,9 +272,10 @@ function compute(data: CityData): Sites {
  * square, then open ground, then the rest; earlier chunks first within a tier) among the chunks
  * that existed when it was built (its `pop`, the highest resident number then). That depends only
  * on numbers stored with the builds, so a build never moves when the city grows. A build without
- * a pop (demo data) uses today's city.
+ * a pop (demo data) uses today's city. RESIDENTIAL_ONLY kinds (universities) skip the centre chunk
+ * and the town square and go to the best spot in a neighbourhood.
  */
-export function assignBuildSites(sites: Sites, builds: { id: number; pop?: number | null }[]): Map<number, Spot> {
+export function assignBuildSites(sites: Sites, builds: { id: number; pop?: number | null; kind?: string }[]): Map<number, Spot> {
   const out = new Map<number, Spot>();
   const chunkCount = sites.houseChunks.length ? sites.houseChunks[sites.houseChunks.length - 1] + 1 : 0;
   // the city builds chunks until it has capacityFor(n) house plots, so the last one needed is that plot's chunk
@@ -286,10 +288,13 @@ export function assignBuildSites(sites: Sites, builds: { id: number; pop?: numbe
     if (out.has(b.id)) continue;
     // only chunks that were complete then: the newest one was still filling in (see computeSites)
     const limit = Math.max(1, (b.pop ? chunksAt(b.pop) : chunkCount) - 1);
+    // universities and the like belong in the neighbourhoods: never the centre chunk or the square
+    const residential = !!b.kind && RESIDENTIAL_ONLY.includes(b.kind);
     let best = -1;
     for (let i = 0; i < sites.builds.length; i++) {
       const s = sites.builds[i];
       if (used[i] || s.chunk >= limit) continue;
+      if (residential && (s.chunk === 0 || s.tier === 0)) continue;
       if (best < 0 || (s.tier ?? 2) < (sites.builds[best].tier ?? 2)) best = i;
       if ((s.tier ?? 2) === 0) break; // nothing beats the town square
     }

@@ -38,7 +38,11 @@ export const BUILDS = [
   { kind: 'shop', label: 'Shop', emoji: '🛍️', words: ['shop', 'store', 'mall', 'boutique', 'kpop store', 'candy shop', 'toy store'] },
   { kind: 'ship', label: 'Pirate ship', emoji: '🏴‍☠️', words: ['pirate ship', 'ship', 'boat', 'yacht'] },
   { kind: 'cinema', label: 'Cinema', emoji: '🎬', words: ['cinema', 'movie theater', 'movie theatre', 'theater', 'theatre'] },
+  { kind: 'university', label: 'University', emoji: '🎓', words: ['university', 'universities', 'uni', 'college', 'colleges', 'campus'] },
 ];
+
+/** Kinds that belong in the neighbourhoods, never in the centre (src/city/sites.ts assignBuildSites). */
+export const RESIDENTIAL_ONLY = ['university'];
 export const BUILD_KINDS = BUILDS.map((b) => b.kind);
 export const BUILD_BY_KIND = Object.fromEntries(BUILDS.map((b) => [b.kind, b]));
 

@@ -25,13 +25,13 @@ const K = {
  * Builds drawn larger than one tile: the whole sprite is scaled around its base point (stands,
  * floodlights and crowd included). BUILD_HEIGHT already includes the scale.
  */
-export const BUILD_SCALE: Record<string, number> = { stadium: 1.8 };
+export const BUILD_SCALE: Record<string, number> = { stadium: 1.8, university: 1.5 };
 
 /** Height above the ground in world px, for chunk bounds and tap tests. */
 export const BUILD_HEIGHT: Record<string, number> = {
   pool: 44, fountain: 46, park: 62, playground: 48, ferris: 104, carousel: 72, castle: 92, tower: 114, statue: 92,
   garden: 40, treehouse: 88, cafe: 52, bakery: 58, icecream: 66, pizza: 56, library: 66, museum: 66, stadium: 104 /* 58 at scale 1 */,
-  skatepark: 36, shop: 52, ship: 88, cinema: 66,
+  skatepark: 36, shop: 52, ship: 88, cinema: 66, university: 100 /* 66 at scale 1 */,
 };
 
 const X = (p: Proj, u: number, v: number) => projX(p, u, v);
@@ -874,6 +874,54 @@ const museum: Draw = (ctx, p, sky, _look, detail, seed) => {
   void pal;
 };
 
+/** A red-brick hall on a green quad with a clock tower, copper dome and a columned porch. */
+const university: Draw = (ctx, p, sky, _look, detail, seed) => {
+  const brick = wallMat(sky, K.brick), stone = wallMat(sky, K.stone), slate = material(sky, K.ink), lawn = material(sky, K.leaf);
+  shadow(ctx, p, sky, 0.86, 0.14);
+  // the quad and a path up to the door
+  box(ctx, p, -0.66, 0.66, -0.66, 0.66, 0, 0.02, lawn.top, lawn.l, lawn.r);
+  fillPoly(ctx, p, [-0.07, 0.2, 0.021, 0.07, 0.2, 0.021, 0.07, 0.66, 0.021, -0.07, 0.66, 0.021], stone.top);
+  // the long hall across the back, flat roof with a stone parapet
+  box(ctx, p, -0.56, 0.56, -0.56, 0.06, 0.02, 0.4, slate.top, brick.l, brick.r);
+  box(ctx, p, -0.58, 0.58, -0.58, 0.08, 0.4, 0.44, stone.top, stone.l, stone.r);
+  windowRow(ctx, p, sky, 'l', 0.06 + 0.001, -0.52, -0.16, 0.13, 0.33, 3, seed);
+  windowRow(ctx, p, sky, 'l', 0.06 + 0.001, 0.16, 0.52, 0.13, 0.33, 3, seed + 1);
+  windowRow(ctx, p, sky, 'r', 0.56 + 0.001, -0.52, 0.02, 0.13, 0.33, 3, seed + 2);
+  // clock tower in the middle, with a copper dome and a gold point
+  box(ctx, p, -0.13, 0.13, -0.16, 0.12, 0.02, 0.78, stone.top, brick.l, brick.r);
+  box(ctx, p, -0.15, 0.15, -0.18, 0.14, 0.78, 0.82, stone.top, stone.l, stone.r);
+  drum(ctx, p, sky, 0, -0.02, 0.82, 0.88, 0.11, K.copper);
+  const dx = X(p, 0, -0.02), dy = Y(p, 0, -0.02, 0.88);
+  ctx.fillStyle = material(sky, K.copper).base;
+  ctx.beginPath();
+  ctx.ellipse(dx, dy, 0.11 * p.s * 0.7071, 0.11 * p.s * 0.7071 * 0.9, 0, Math.PI, TAU);
+  ctx.fill();
+  line(ctx, dx, dy - 0.11 * p.s * 0.6, dx, dy - 0.11 * p.s * 0.6 - 7, 1.4, COLORS.gold);
+  // clock face on the front
+  const cx = X(p, 0, 0.12), cy = Y(p, 0, 0.12, 0.64);
+  ctx.fillStyle = mix(K.cream, COLORS.glow, lit(sky) ? 0.5 : 0);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 4.2, 3.6, 0, 0, TAU);
+  ctx.fill();
+  if (detail >= 1) {
+    line(ctx, cx, cy, cx, cy - 2.6, 0.9, K.ink);
+    line(ctx, cx, cy, cx + 1.8, cy + 0.6, 0.9, K.ink);
+  }
+  // columned porch with a pediment, and a lit door
+  box(ctx, p, -0.2, 0.2, 0.12, 0.26, 0.02, 0.05, stone.top, stone.l, stone.r);
+  for (let k = 0; k < 4; k++) drum(ctx, p, sky, -0.15 + k * 0.1, 0.22, 0.05, 0.3, 0.025, K.white);
+  box(ctx, p, -0.2, 0.2, 0.12, 0.26, 0.3, 0.34, stone.top, stone.l, stone.r);
+  fillPoly(ctx, p, [-0.2, 0.26, 0.34, 0.2, 0.26, 0.34, 0, 0.26, 0.44], stone.l);
+  faceL(ctx, p, 0.12 + 0.001, -0.05, 0.05, 0.05, 0.22, glassColor(sky, true, 1));
+  glow(ctx, X(p, 0, 0.2), Y(p, 0, 0.2, 0.15), 24, sky, 0.5);
+  // a pennant on the roof
+  if (detail >= 1) {
+    const fx = X(p, 0.45, -0.45), fy = Y(p, 0.45, -0.45, 0.44);
+    line(ctx, fx, fy, fx, fy - 12, 1.1, K.steel);
+    fillPoly(ctx, { cx: fx, cy: fy - 12, s: 1 }, [0, 0, 0, 10, 10, 0, 0, 0, -4], material(sky, K.navy).base);
+  }
+};
+
 const stadium: Draw = (ctx, p, sky, _look, detail) => {
   const pal = sky.palette;
   shadow(ctx, p, sky, 0.95, 0.14);
@@ -1031,7 +1079,7 @@ const cinema: Draw = (ctx, p, sky, _look, detail, seed) => {
 
 const KINDS: Record<string, Draw> = {
   pool, fountain, park, playground, ferris, carousel, castle, tower, statue, garden, treehouse, cafe, bakery,
-  icecream, pizza, library, museum, stadium, skatepark, shop: shopBuild, ship, cinema,
+  icecream, pizza, library, museum, stadium, skatepark, shop: shopBuild, ship, cinema, university,
 };
 
 export function drawBuild(ctx: CanvasRenderingContext2D, o: Obj, look: Look, detail: number, proj: Proj): void {
