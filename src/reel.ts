@@ -23,7 +23,7 @@ import type { CityView, ReelCamera, ReelControl, ReelTarget } from './city/api';
 import { COLORS, FONTS, alpha, skyAt, type SkyState } from './theme';
 import { renderShareCard } from './ui/share';
 import { addressOf } from './ui/lookup';
-import { drawJadie, JADIE_HEIGHT, type JadiePose } from './reel-jadie';
+import { drawCompanion, drawJadie, JADIE_HEIGHT, type CompanionPet, type JadiePose } from './reel-jadie';
 
 export interface ReelStats {
   city: string;
@@ -126,7 +126,8 @@ interface Key {
  */
 export interface ReelActor {
   id: 'jadie';
-  keys: { t: number; at: string; dx?: number; dy?: number; pose?: JadiePose; face?: 1 | -1 }[];
+  /** `pet`: a companion trotting beside him from this key on (null for none) */
+  keys: { t: number; at: string; dx?: number; dy?: number; pose?: JadiePose; face?: 1 | -1; pet?: CompanionPet | null }[];
   talk?: { from: number; to: number }[];
   /** added to the animation clock (gestures, breathing), e.g. to end a looping reel on its first frame's pose */
   clock?: number;
@@ -457,7 +458,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
 
   const canvas = document.getElementById('city') as HTMLCanvasElement;
   // ── scripted camera (launch reels): set with window.kinsburgReel.setScript() ──
-  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[]; labels: ReelLabel[]; lifts?: number[]; actors: { id: string; keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1 }[]; talk: { from: number; to: number }[]; clock: number }[]; ease: 'cubic' | 'sine' } | null = null;
+  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[]; labels: ReelLabel[]; lifts?: number[]; actors: { id: string; keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1; pet?: CompanionPet | null }[]; talk: { from: number; to: number }[]; clock: number }[]; ease: 'cubic' | 'sine' } | null = null;
   const resolveTarget = (spec: string): ReelTarget | null => {
     const id = normalise(spec);
     if (id === 'wide') return null;
@@ -473,20 +474,23 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
     return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 - (H * 0.02) / z, zoom: z };
   };
   /** Where an actor is at time t, the pose to draw and which way he faces. */
-  const actorAt = (a: { keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1 }[] }, t: number) => {
+  const actorAt = (a: { keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1; pet?: CompanionPet | null }[] }, t: number) => {
     const ks = a.keys;
-    if (t <= ks[0].t) return { x: ks[0].x, y: ks[0].y, pose: ks[0].pose, face: ks[0].face ?? 1 };
+    // the pet is whatever the latest key that names one says
+    let pet: CompanionPet | null = null;
+    for (const k of ks) if (k.t <= t && k.pet !== undefined) pet = k.pet;
+    if (t <= ks[0].t) return { x: ks[0].x, y: ks[0].y, pose: ks[0].pose, face: ks[0].face ?? 1, pet: ks[0].pet ?? null };
     for (let i = 0; i < ks.length - 1; i++) {
       const A = ks[i], B = ks[i + 1];
       if (t > B.t) continue;
       const moving = Math.hypot(B.x - A.x, B.y - A.y) > 0.5;
-      if (!moving) return { x: A.x, y: A.y, pose: A.pose, face: A.face ?? 1 };
+      if (!moving) return { x: A.x, y: A.y, pose: A.pose, face: A.face ?? 1, pet };
       const u = clamp01((t - A.t) / Math.max(1e-6, B.t - A.t));
       const e = u * u * (3 - 2 * u);
-      return { x: lerp(A.x, B.x, e), y: lerp(A.y, B.y, e), pose: 'walk' as JadiePose, face: (B.face ?? (B.x >= A.x ? 1 : -1)) as 1 | -1 };
+      return { x: lerp(A.x, B.x, e), y: lerp(A.y, B.y, e), pose: 'walk' as JadiePose, face: (B.face ?? (B.x >= A.x ? 1 : -1)) as 1 | -1, pet };
     }
     const L = ks[ks.length - 1];
-    return { x: L.x, y: L.y, pose: L.pose, face: L.face ?? 1 };
+    return { x: L.x, y: L.y, pose: L.pose, face: L.face ?? 1, pet };
   };
   /** Camera between script keys: cubic ease in-out, keeping the closer shot's centre on a straight screen path. */
   const scriptCamera = (t: number): ReelCamera => {
@@ -530,6 +534,11 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         const talk = a.talk.some((r) => tt >= r.from && tt <= r.to);
+        if (p.pet) {
+          // the pet trots a step behind and beside him, a little lower so it reads in front of the street
+          const px = p.x - p.face * 9, py = p.y + 5;
+          drawCompanion(ctx, W / 2 + (px - camera.x) * camera.zoom, H / 2 + (py - camera.y) * camera.zoom, camera.zoom, p.pet, tt + a.clock, p.face, p.pose === 'walk');
+        }
         drawJadie(ctx, W / 2 + (p.x - camera.x) * camera.zoom, H / 2 + (p.y - camera.y) * camera.zoom, camera.zoom, p.pose, tt + a.clock, p.face, talk);
         ctx.restore();
       }
@@ -580,7 +589,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
         keys: a.keys.map((k) => {
           const tg = resolveTarget(k.at);
           if (!tg) missingActors.push(k.at);
-          return { t: k.t, x: (tg?.x ?? 0) + (k.dx ?? 0), y: (tg?.y ?? 0) + (k.dy ?? 0), pose: k.pose ?? 'idle', face: k.face };
+          return { t: k.t, x: (tg?.x ?? 0) + (k.dx ?? 0), y: (tg?.y ?? 0) + (k.dy ?? 0), pose: k.pose ?? 'idle', face: k.face, pet: k.pet };
         }),
       }));
       // each key: { t, target: resident id | 'landmark:kind' | 'lot:id' | 'actor:jadie' | 'wide', zoom?, y? (where the subject sits, 0..1 of the height) }

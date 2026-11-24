@@ -14,6 +14,7 @@ Hashtag choices and what's working for similar accounts: [RESEARCH.md](RESEARCH.
 |---|---|---|
 | Day 1 | [launch/launch-04-house-number-4-is-empty](launch/launch-04-house-number-4-is-empty) | **Posted.** The city went from 3 to 28 residents |
 | **Now** | [in-this-town/in-this-town-02-six-seven](in-this-town/in-this-town-02-six-seven) | **Ready, post first.** "6 7" only works while there are exactly 67 residents. Loops seamlessly |
+| **Next** | [in-this-town/in-this-town-03-the-update](in-this-town/in-this-town-03-the-update) | **Ready.** Pets, jobs, RESPOND and coins, besties, secret spots. No exact numbers, so it doesn't go stale |
 | Day 2 | [in-this-town/in-this-town-01-rules-of-kinsburg](in-this-town/in-this-town-01-rules-of-kinsburg) | **Ready.** Re-rendered from the live city with @jadiedevs as resident #4 |
 | Day 3 | [live/live-01-lets-build-this-city](live/live-01-lets-build-this-city) | **Ready.** Jadie's voice, hover cards for @itsjadenchristy, @metabro.pov and @jadiedevs |
 | Later | [launch/launch-01-yours-is-still-dark](launch/launch-01-yours-is-still-dark) | Re-render from the live city (this cut shows the demo city) |
@@ -28,7 +29,7 @@ The two Ready Reels have the live numbers filmed in (28 residents, house #29). I
 npm run reel:launch -- --only T1 --url https://kinsburg.com
 ```
 
-Use `--only D` for launch-04, `T1` for in-this-town-01, `T2` for in-this-town-02 (only at 67 residents), `L1` for live-01, `A`/`B`/`C` for launch-01 to 03; leave `--only` out to re-render launch-01 to 03.
+Use `--only D` for launch-04, `T1` for in-this-town-01, `T2` for in-this-town-02 (only at 67 residents), `T3` for in-this-town-03, `L1` for live-01, `A`/`B`/`C` for launch-01 to 03; leave `--only` out to re-render launch-01 to 03.
 
 The new video, cover and grid preview go straight into the Reel's folder here, replacing the old ones. A caption you've already written is kept; the script prints the new caption so you can update its numbers.
 

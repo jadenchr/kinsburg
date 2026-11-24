@@ -68,6 +68,8 @@ async function cityPage(base) {
 async function narrate(tmp, id, lines, character) {
   if (!existsSync(KOKORO_PYTHON)) throw new Error(`Kokoro not found at ${KOKORO_PYTHON} (set KOKORO_PYTHON)`);
   const src = join(tmp, `${id}-lines.json`), wav = join(tmp, `${id}-vo.wav`), tj = join(tmp, `${id}-vo.json`);
+  // *word* only marks a gold caption: never let the voice read the asterisks out
+  lines = lines.map((l) => ({ ...l, say: (l.say ?? l.text).replace(/\*/g, '') }));
   writeFileSync(src, JSON.stringify(lines));
   if (!character) {
     await run(KOKORO_PYTHON, ['-I', join(ROOT, 'scripts/reel/voice.py'), src, wav, tj]);
@@ -784,7 +786,6 @@ async function reelT3({ tmp, page, R }) {
   const J = R.find((r) => r.id === JADIE);
   if (!J) throw new Error('@jadiedevs is not a resident');
   if (!J.pet) throw new Error('Jadie has no pet yet: POST /admin/pet {"handle":"jadiedevs","pet":"dog"}');
-  const petHome = R.find((r) => r.pet && r.id !== JADIE && r.id !== 'kinsburgtown') ?? J;
   const town = await page.evaluate(() => fetch('/api/city/town.json').then((r) => r.json()).catch(() => null));
   const call = (town?.sim?.open ?? []).find((c) => c.target && R.some((r) => r.id === c.target));
   const trouble = call?.target ?? J.id;
@@ -800,7 +801,8 @@ async function reelT3({ tmp, page, R }) {
   ], JADIE_VOICE);
   const ls = v.lines, D = v.duration, xf = 0.3;
   const cuts = [0, ls[1].start - 0.2, ls[2].start - 0.2, ls[3].start - 0.2, ls[5].start - 0.2, ls[6].start - 0.2, D];
-  const home = { at: JADIE, dx: -36, dy: 18 }, spot = { at: 'next', dx: -36, dy: 18 };
+  // the lawn by the monument: the police station now stands on the street in front of his house
+  const home = { at: JADIE, dx: -36, dy: -18 }, spot = { at: 'next', dx: -36, dy: 18 };
   const wordAt = (l, re) => l.words.find((w) => re.test(w.w.replace(/\*/g, '')))?.start ?? l.start;
   const shot = async (i, build) => {
     const d = cuts[i + 1] - cuts[i] + (i < cuts.length - 2 ? xf : 0);
@@ -813,13 +815,14 @@ async function reelT3({ tmp, page, R }) {
   // 1 · Jadie and his new dog
   shots.push(await shot(0, (d) => ({
     keys: [{ t: 0, target: 'actor:jadie', zoom: 8.6, y: 0.6 }, { t: d, target: 'actor:jadie', zoom: 9.2, y: 0.6 }],
-    actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'jump' }, { t: d, ...home, pose: 'jump' }] }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'jump', pet: 'dog' }, { t: d, ...home, pose: 'jump' }] }],
     rings: [{ id: JADIE, from: 0.2 }],
   })));
   // 2 · a real resident's pet in their yard; the sign swaps DOG → CAT → BUNNY on the words
-  shots.push(await shot(1, (d) => ({
-    keys: [{ t: 0, target: petHome.id, zoom: 8.4, y: 0.62 }, { t: d, target: petHome.id, zoom: 9.0, y: 0.62 }],
-    actors: [{ id: 'jadie', keys: [{ t: 0, at: petHome.id, dx: -30, dy: 34, pose: 'point', face: 1 }, { t: d, at: petHome.id, dx: -30, dy: 34, pose: 'point', face: 1 }] }],
+  const l1 = ls[1], tCat = wordAt(l1, /^cat/i) - 0.25, tBun = wordAt(l1, /^bunny/i) - 0.25;
+  shots.push(await shot(1, (d, loc) => ({
+    keys: [{ t: 0, target: 'actor:jadie', zoom: 9.6, y: 0.6 }, { t: d, target: 'actor:jadie', zoom: 10.2, y: 0.6 }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'point', face: -1, pet: 'dog' }, { t: loc(tCat), ...home, pose: 'point', face: -1, pet: 'cat' }, { t: loc(tBun), ...home, pose: 'point', face: -1, pet: 'bunny' }, { t: d, ...home, pose: 'point', face: -1 }] }],
   })));
   // 3 · jobs: glide from the police station to the fire station
   shots.push(await shot(2, (d) => ({
@@ -828,29 +831,28 @@ async function reelT3({ tmp, page, R }) {
   // 4 · RESPOND: Jadie runs to a house with an open call, then jumps when the coins land
   shots.push(await shot(3, (d, loc) => {
     const arrive = Math.min(1.4, d - 1);
-    const paid = loc(wordAt(ls[4], /^coins/i));
+    const paid = loc(wordAt(ls[4], /^coins/i)), fox = loc(wordAt(ls[4], /^fox/i)) - 0.1;
     return {
       keys: [{ t: 0, target: 'actor:jadie', zoom: 6.6, y: 0.62 }, { t: arrive, target: 'actor:jadie', zoom: 7.2, y: 0.62 }, { t: d, target: 'actor:jadie', zoom: 7.6, y: 0.62 }],
-      actors: [{ id: 'jadie', keys: [{ t: 0, at: trouble, dx: -110, dy: 55, pose: 'idle' }, { t: arrive, at: trouble, dx: -36, dy: 18, pose: 'idle' }, { t: paid, at: trouble, dx: -36, dy: 18, pose: 'jump' }, { t: d, at: trouble, dx: -36, dy: 18, pose: 'jump' }] }],
+      actors: [{ id: 'jadie', keys: [{ t: 0, at: trouble, dx: -110, dy: 55, pose: 'idle', pet: 'dog' }, { t: arrive, at: trouble, dx: -36, dy: 18, pose: 'idle' }, { t: paid, at: trouble, dx: -36, dy: 18, pose: 'jump' }, { t: fox, at: trouble, dx: -36, dy: 18, pose: 'jump', pet: 'fox' }, { t: d, at: trouble, dx: -36, dy: 18, pose: 'jump' }] }],
       rings: [{ id: trouble, from: 0.2 }],
     };
   }));
   // 5 · besties: the next empty plot, Jadie waves
   shots.push(await shot(4, (d) => ({
     keys: [{ t: 0, target: 'actor:jadie', zoom: 7.4, y: 0.62 }, { t: d, target: 'actor:jadie', zoom: 7.8, y: 0.62 }],
-    actors: [{ id: 'jadie', keys: [{ t: 0, ...spot, pose: 'wave' }, { t: d, ...spot, pose: 'wave' }] }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, ...spot, pose: 'wave', pet: 'dog' }, { t: d, ...spot, pose: 'wave' }] }],
     rings: [{ id: 'next', from: 0.15 }],
   })));
   // 6 · secrets: a long pull out over the whole city
   shots.push(await shot(5, (d) => ({
     keys: [{ t: 0, target: 'actor:jadie', zoom: 7.0, y: 0.62 }, { t: Math.min(d, 2.4), target: J.id, zoom: 0.85, y: 0.55 }, { t: d, target: J.id, zoom: 0.8, y: 0.55 }],
-    actors: [{ id: 'jadie', keys: [{ t: 0, ...spot, pose: 'look' }, { t: d, ...spot, pose: 'look' }] }],
+    actors: [{ id: 'jadie', keys: [{ t: 0, ...spot, pose: 'look', pet: 'dog' }, { t: d, ...spot, pose: 'look' }] }],
   })));
 
   const right = `${n.toLocaleString('en-US')} residents`;
   const overlays = await common(tmp, 'T3', v, right, { title: 'in this town', words: 1 });
   overlays.push({ png: await png(join(tmp, 'T3-title.png'), `<div class="cap" style="font-size:108px"><div>New in <b>Kinsburg</b></div></div>`), from: 0, to: cuts[1], noFade: true });
-  const l1 = ls[1], tCat = wordAt(l1, /^cat/i) - 0.25, tBun = wordAt(l1, /^bunny/i) - 0.25;
   overlays.push({ png: await sign(tmp, 'T3', 'Comment', 'Pet dog'), from: cuts[1] + 0.2, to: tCat, fade: 0.12 });
   overlays.push({ png: await sign(tmp, 'T3', 'Comment', 'Pet cat'), from: tCat, to: tBun, fade: 0.12 });
   overlays.push({ png: await sign(tmp, 'T3', 'Comment', 'Pet bunny'), from: tBun, to: cuts[2], fade: 0.12 });
@@ -864,13 +866,13 @@ async function reelT3({ tmp, page, R }) {
   await finish(tmp, 'T3', {
     xf, shots, overlays, voice: v, duration: D,
     caption: `In this town… we got pets now. 🐶🐱🐰`,
-    coverBg: await thumbStill(page, tmp, 'T3', { target: 'actor:jadie', zoom: 9.0, y: 0.74, actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'jump' }, { t: 1, ...home, pose: 'jump' }] }] }),
+    coverBg: await thumbStill(page, tmp, 'T3', { target: 'actor:jadie', zoom: 10.5, y: 0.76, actors: [{ id: 'jadie', keys: [{ t: 0, ...home, pose: 'wave', pet: 'dog' }, { t: 1, ...home, pose: 'wave' }] }] }),
     coverHtml: `<div style="position:absolute;left:60px;right:60px;top:${THUMB.top}px;text-align:center;color:${C.white};font-weight:900;text-transform:uppercase;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 34px rgba(11,20,48,.6)">
   <div style="font-size:112px;line-height:1">In this town</div>
   <div style="font-size:250px;line-height:.9;color:${C.gold};letter-spacing:-.02em">pets!</div>
   <div style="font-size:70px;line-height:1.1;margin-top:14px;text-wrap:balance">+ jobs, coins, besties &amp; secrets</div></div>`,
   });
-  return { trouble, call, petHome: petHome.id };
+  return { trouble, call };
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────

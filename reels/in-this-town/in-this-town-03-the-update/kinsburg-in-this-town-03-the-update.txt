@@ -1,1 +1,36 @@
 In this town… we got pets now. 🐶🐱🐰
+
+New in Kinsburg, the cozy isometric city where every house belongs to a real person on Instagram:
+🐶 Comment PET DOG, PET CAT or PET BUNNY (free). Fox, owl and golden retriever are rare.
+💼 Comment JOB and the job you want (police officer, vet, firefighter…), once a week.
+🚒 Fires, break-ins, storm damage: comment RESPOND to help and earn town coins. 150 coins buys a rare pet.
+🏡 Comment MOVE IN @yourbestie and the house next door is held for them.
+🏗️ Tell us what to build: the 3 most-liked ideas get built every day.
+🔍 There are 6 secret spots on the map. Good luck.
+
+No house yet? Comment MOVE IN.
+
+#kinsburg #citybuilder #isometric #cozygames #virtualpet
+
+────────────────────────────────────────
+NOTES (don't paste anything below this line)
+
+Status: READY. Made from the live city on 24 Nov (127 residents). It doesn't depend on exact numbers, so it stays true as people move in.
+Suggested slot: next after the 6 7 Reel (or now, if the city has moved past 67).
+
+What's real: Jadie (@jadiedevs) really has a dog now (given with /admin/pet, the same as commenting PET DOG). The house he runs to had a real open repair call when this was made. In the "PET DOG / CAT / BUNNY" bit his pet swaps with the words, and on "a fox" it turns into a fox for a moment: that's a joke, not a claim he owns one. Pets on the map are drawn small in front yards; the bigger pet beside Jadie is made for the video.
+Who's named: nobody but @jadiedevs.
+
+Files
+- Video: kinsburg-in-this-town-03-the-update.mp4 (16.9 s, 1080×1920, Jadie's voice)
+- Cover: kinsburg-in-this-town-03-the-update-cover.jpg (in Instagram: Edit cover → Add from camera roll)
+- Grid preview: kinsburg-in-this-town-03-the-update-grid-preview.jpg (how the cover looks cropped on the profile grid)
+
+Hashtags: 5, Instagram's maximum since December 2025. #virtualpet is for people searching for the pets.
+
+Alt text (Advanced settings → Accessibility → Write alt text):
+Jadie, a small blocky character in a red beanie, shows the new features of a cozy isometric town at night: his dog, then a cat and a bunny, the police and fire stations, a house needing repairs where he earns coins, the next empty plot for a best friend, and a wide view of the town with a sign saying secret spots 0 of 6.
+
+After posting
+- Reply to the first comments within the first hour; replies count as comments too.
+- Run the comment check if you want houses and pets to appear straight away.

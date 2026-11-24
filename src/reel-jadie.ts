@@ -166,3 +166,85 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+
+// ── Jadie's pet (a companion that trots beside him in reels) ────────────────────
+export type CompanionPet = 'dog' | 'cat' | 'bunny' | 'fox';
+
+const P = {
+  dog: { body: '#a8713f', shade: '#8c5c31', dark: '#6b4423' },
+  cat: { body: '#8d929c', shade: '#747985', dark: '#5d616b' },
+  bunny: { body: '#f2ede3', shade: '#ddd6c8', dark: '#e9a5a5' },
+  fox: { body: '#e07a2f', shade: '#c4651f', dark: '#3a2a20' },
+};
+
+/**
+ * Draw a small pet with its feet at (sx, sy), facing `face`, in the same flat style and scale as Jadie
+ * (about 9 units long). `moving` makes it trot; at rest it breathes and wags.
+ */
+export function drawCompanion(ctx: CanvasRenderingContext2D, sx: number, sy: number, k: number, kind: CompanionPet, t: number, face: 1 | -1 = 1, moving = false) {
+  const c = P[kind];
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.scale(k * face * SCALE * 1.3, k * SCALE * 1.3); // a bit larger than life so it reads on a phone
+  const hop = kind === 'bunny' ? -Math.abs(Math.sin(t * (moving ? 9 : 2.4))) * (moving ? 3 : 0.6) : moving ? -Math.abs(Math.sin(t * 11)) * 0.8 : 0;
+  // shadow
+  ctx.fillStyle = 'rgba(10,16,32,0.28)';
+  ctx.beginPath(); ctx.ellipse(0, 0.2, 5.2, 1.7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.translate(0, hop);
+  const step = moving ? Math.sin(t * 22) * 0.9 : 0;
+  // legs (not for the bunny, whose body sits on its feet)
+  if (kind !== 'bunny') {
+    ctx.fillStyle = c.shade;
+    for (const [x, s] of [[-3.4, step], [-1.6, -step], [2.0, -step], [3.6, step]] as const) ctx.fillRect(x + s * 0.4, -3.2, 1.2, 3.2);
+  }
+  // tail
+  ctx.strokeStyle = kind === 'fox' ? c.body : c.shade;
+  ctx.lineCap = 'round';
+  if (kind === 'dog') {
+    const wag = Math.sin(t * 16) * 0.8;
+    ctx.lineWidth = 1.1; ctx.beginPath(); ctx.moveTo(-4.4, -5.4); ctx.quadraticCurveTo(-6.2, -7.2 + wag, -6.0, -8.6 + wag); ctx.stroke();
+  } else if (kind === 'cat') {
+    ctx.lineWidth = 1.0; ctx.beginPath(); ctx.moveTo(-4.4, -5.0); ctx.quadraticCurveTo(-7.2, -6.0, -6.4, -10.2 + Math.sin(t * 3) * 0.5); ctx.stroke();
+  } else if (kind === 'fox') {
+    ctx.fillStyle = c.body; ctx.beginPath(); ctx.ellipse(-6.0, -5.2, 3.0, 1.6, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f7efe2'; ctx.beginPath(); ctx.ellipse(-8.2, -6.4, 1.2, 0.9, -0.5, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-4.2, -4.4, 1.3, 0, Math.PI * 2); ctx.fill();
+  }
+  // body
+  ctx.fillStyle = c.body;
+  ctx.beginPath();
+  if (kind === 'bunny') ctx.ellipse(0, -3.4, 3.8, 3.2, 0, 0, Math.PI * 2);
+  else ctx.ellipse(0, -5.0, 4.8, 2.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = c.shade;
+  ctx.beginPath();
+  if (kind === 'bunny') ctx.ellipse(0.6, -2.4, 3.0, 1.6, 0, 0, Math.PI * 2);
+  else ctx.ellipse(0.4, -4.0, 4.0, 1.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // head
+  const hx = kind === 'bunny' ? 3.2 : 4.4, hy = kind === 'bunny' ? -6.6 : -7.4;
+  ctx.fillStyle = c.body;
+  ctx.beginPath(); ctx.arc(hx, hy, kind === 'bunny' ? 2.3 : 2.5, 0, Math.PI * 2); ctx.fill();
+  // ears
+  if (kind === 'dog') {
+    ctx.fillStyle = c.dark; ctx.beginPath(); ctx.ellipse(hx - 1.4, hy - 0.2, 0.9, 1.9, 0.3, 0, Math.PI * 2); ctx.fill();
+  } else if (kind === 'bunny') {
+    for (const dx of [-0.9, 0.7]) {
+      ctx.fillStyle = c.body; ctx.beginPath(); ctx.ellipse(hx + dx, hy - 3.6, 0.85, 2.6, 0.12, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = c.dark; ctx.beginPath(); ctx.ellipse(hx + dx, hy - 3.4, 0.38, 1.8, 0.12, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = c.body;
+    for (const dx of [-1.5, 1.1]) { ctx.beginPath(); ctx.moveTo(hx + dx - 1.0, hy - 1.4); ctx.lineTo(hx + dx + 0.2, hy - 4.2); ctx.lineTo(hx + dx + 1.0, hy - 1.2); ctx.closePath(); ctx.fill(); }
+  }
+  // snout, nose, eye
+  if (kind === 'dog' || kind === 'fox') {
+    ctx.fillStyle = kind === 'fox' ? '#f7efe2' : c.shade;
+    ctx.beginPath(); ctx.ellipse(hx + 2.4, hy + 0.6, 1.6, 1.0, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#1d1b1a';
+  ctx.beginPath(); ctx.arc(hx + (kind === 'bunny' ? 2.1 : 3.6), hy + (kind === 'bunny' ? 0.2 : 0.4), 0.45, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx + 0.9, hy - 0.5, 0.42, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
