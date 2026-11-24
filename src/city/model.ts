@@ -6,7 +6,7 @@ import { homeTop } from './homes';
 import { HW, HH, hash } from './iso';
 import { assignBuildSites, computeSites, type SecretSpot } from './sites';
 import type { BuildInfo, Hold } from './api';
-import { BUILD_HEIGHT } from './builds';
+import { BUILD_HEIGHT, BUILD_SCALE } from './builds';
 
 export const T_GRASS = 0;
 export const T_ROAD = 1;
@@ -193,7 +193,7 @@ export function buildModel(data: CityData, extras: Extras = { builds: [], holds:
     for (const b of [...extras.builds].sort((a, z) => a.id - z.id)) {
       const site = placed.get(b.id);
       if (!site || byBuild.has(b.id) || occ[site.y * W + site.x] >= 0) continue;
-      byBuild.set(b.id, add({ kind: 'build', x: site.x, y: site.y, w: 1, h: 1, seed: (b.id * 2654435761) >>> 0, height: BUILD_HEIGHT[b.kind] ?? 60, reach: 40, build: b }, true));
+      byBuild.set(b.id, add({ kind: 'build', x: site.x, y: site.y, w: 1, h: 1, seed: (b.id * 2654435761) >>> 0, height: BUILD_HEIGHT[b.kind] ?? 60, reach: Math.round(40 * (BUILD_SCALE[b.kind] ?? 1)), build: b }, true));
     }
     for (const s of sites.secrets) {
       if (occ[s.y * W + s.x] >= 0) continue;

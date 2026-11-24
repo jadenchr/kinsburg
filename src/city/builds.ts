@@ -21,10 +21,16 @@ const K = {
   sand: '#e8d29a', concrete: '#b9bcc2',
 } as const;
 
+/**
+ * Builds drawn larger than one tile: the whole sprite is scaled around its base point (stands,
+ * floodlights and crowd included). BUILD_HEIGHT already includes the scale.
+ */
+export const BUILD_SCALE: Record<string, number> = { stadium: 1.8 };
+
 /** Height above the ground in world px, for chunk bounds and tap tests. */
 export const BUILD_HEIGHT: Record<string, number> = {
   pool: 44, fountain: 46, park: 62, playground: 48, ferris: 104, carousel: 72, castle: 92, tower: 114, statue: 92,
-  garden: 40, treehouse: 88, cafe: 52, bakery: 58, icecream: 66, pizza: 56, library: 66, museum: 66, stadium: 58,
+  garden: 40, treehouse: 88, cafe: 52, bakery: 58, icecream: 66, pizza: 56, library: 66, museum: 66, stadium: 104 /* 58 at scale 1 */,
   skatepark: 36, shop: 52, ship: 88, cinema: 66,
 };
 
@@ -1030,7 +1036,15 @@ const KINDS: Record<string, Draw> = {
 
 export function drawBuild(ctx: CanvasRenderingContext2D, o: Obj, look: Look, detail: number, proj: Proj): void {
   const fn = KINDS[o.build?.kind ?? ''];
-  if (fn) fn(ctx, proj, look.sky, look, detail, o.seed);
+  const k = BUILD_SCALE[o.build?.kind ?? ''] ?? 1;
+  if (fn && k !== 1) {
+    ctx.save();
+    ctx.translate(proj.cx, proj.cy);
+    ctx.scale(k, k);
+    ctx.translate(-proj.cx, -proj.cy);
+    fn(ctx, proj, look.sky, look, detail, o.seed);
+    ctx.restore();
+  } else if (fn) fn(ctx, proj, look.sky, look, detail, o.seed);
   else {
     // a kind this version doesn't know yet: a little marker so the site is not empty
     shadow(ctx, proj, look.sky, 0.6);
