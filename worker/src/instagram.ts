@@ -561,7 +561,7 @@ async function metaGet(env: Env, keys: string[]): Promise<Record<string, string>
 const metaSet = (env: Env, key: string, value: string) =>
   env.DB.prepare('INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, value);
 
-/** The current pacing window (IG_REPLY_WINDOW_SECONDS, default 10 minutes: one per 15-minute check). */
+/** The current pacing window (IG_REPLY_WINDOW_SECONDS, default 10 minutes: one per comment scan). */
 const windowKey = (env: Env) => String(Math.floor(Date.now() / (intVar(env.IG_REPLY_WINDOW_SECONDS, 600) * 1000)));
 
 export async function replyStatus(env: Env) {

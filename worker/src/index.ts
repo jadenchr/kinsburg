@@ -20,6 +20,9 @@ import { serveMedia } from './media';
 import { getTown } from './town';
 import { lapseHolds, runDailyBuilds } from './builds';
 
+const WEEKLY_CRON = '41 3 * * 1';
+const CITY_CRON = '7,22,37,52 * * * *';
+
 const SHORT = 'public, max-age=60';
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const CORS = { 'access-control-allow-origin': '*' };
@@ -102,38 +105,49 @@ export default {
     }
   },
 
+  /**
+   * Three schedules (wrangler.jsonc):
+   *   COMMENTS_CRON  every 10 min: queued replies, then the comment scan (joins, welcomes, requests)
+   *   CITY_CRON      every 15 min, between them: daily builds, bestie holds, the simulation,
+   *                  politics and announcements (the simulation counts 96 steps a day)
+   *   weekly         token refresh
+   */
   async scheduled(controller, env): Promise<void> {
-    // hand-picked replies first: they share the reply allowance with welcome replies, which come next
-    if (controller.cron !== '41 3 * * 1') {
+    if (controller.cron === WEEKLY_CRON) {
+      try {
+        await refreshToken(env);
+      } catch (err) {
+        log('cron_failed', { cron: controller.cron, error: String(err) });
+      }
+      return;
+    }
+    if (controller.cron !== CITY_CRON) {
+      // hand-picked replies first: they share the reply allowance with welcome replies, which come next
       try {
         await flushReplyQueue(env);
       } catch (err) {
         log('replies_failed', { error: String(err) });
       }
-    }
-    try {
-      if (controller.cron === '41 3 * * 1') await refreshToken(env);
-      else await pollComments(env);
-    } catch (err) {
-      log('cron_failed', { cron: controller.cron, error: String(err) });
-    }
-    // the day's builds and bestie holds run on the 15-minute cron, even when Instagram is unreachable
-    if (controller.cron !== '41 3 * * 1') {
       try {
-        await runDailyBuilds(env);
-        await lapseHolds(env);
+        await pollComments(env);
       } catch (err) {
-        log('builds_failed', { error: String(err) });
+        log('cron_failed', { cron: controller.cron, error: String(err) });
       }
+      return;
     }
-    // the city simulation steps on the 15-minute cron, even when Instagram is unreachable
-    if (controller.cron !== '41 3 * * 1') {
-      for (const [name, step] of [['sim', () => simTick(env)], ['politics', () => politicsTick(env)], ['announce', () => flushAnnouncements(env)]] as const) {
-        try {
-          await step();
-        } catch (err) {
-          log(`${name}_failed`, { error: String(err) });
-        }
+    // the day's builds and bestie holds, even when Instagram is unreachable
+    try {
+      await runDailyBuilds(env);
+      await lapseHolds(env);
+    } catch (err) {
+      log('builds_failed', { error: String(err) });
+    }
+    // the city simulation steps every 15 minutes, even when Instagram is unreachable
+    for (const [name, step] of [['sim', () => simTick(env)], ['politics', () => politicsTick(env)], ['announce', () => flushAnnouncements(env)]] as const) {
+      try {
+        await step();
+      } catch (err) {
+        log(`${name}_failed`, { error: String(err) });
       }
     }
   },

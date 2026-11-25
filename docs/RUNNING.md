@@ -195,7 +195,7 @@ Every comment a resident leaves on our posts counts. At 3 comments the house get
 
 ## Comment replies
 
-Welcome replies are on (`IG_REPLY_ENABLED` in wrangler.jsonc). Every 15-minute check first sends queued hand-picked replies (see "Reply queue" below), then welcomes new residents and catches up on missed ones, all within one shared allowance. Kinsburg replies to every MOVE IN comment, at a human pace: at most 2 replies per 15-minute check, a few seconds apart, and at most 80 a day. Instagram blocks accounts that post bursts of similar comments, so this pace is deliberate. Comments that miss out (over the limit, or while paused) wait in a queue and get their reply on a later check.
+Welcome replies are on (`IG_REPLY_ENABLED` in wrangler.jsonc). Every 10-minute comment check first sends queued hand-picked replies (see "Reply queue" below), then welcomes new residents and catches up on missed ones, all within one shared allowance. Kinsburg replies to every MOVE IN comment, at a human pace: at most 2 replies per 10 minutes, a few seconds apart, and at most 50 a day (Instagram blocked the account after about 57 in one day). Instagram blocks accounts that post bursts of similar comments, so this pace is deliberate. Comments that miss out (over the limit, or while paused) wait in a queue and get their reply on a later check.
 
 If Instagram blocks commenting anyway, Kinsburg stops trying: replies pause for 6 hours, then 12, 24 and up to 48 if it happens again, and continue on their own afterwards. Retrying into a block only makes it longer.
 
@@ -207,7 +207,7 @@ curl -s -X POST https://kinsburg.com/admin/replies -H "Authorization: Bearer YOU
 
 It lists the queued MOVE IN replies, other comments nobody has answered (those never get an automatic reply, so answer them yourself), and `pace`: replies sent today and whether replies are paused.
 
-Run a comment check now instead of waiting up to 15 minutes:
+Run a comment check now instead of waiting up to 10 minutes:
 
 ```bash
 curl -s -X POST https://kinsburg.com/admin/check-comments -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
@@ -225,7 +225,7 @@ curl -s -X POST https://kinsburg.com/admin/reply -H "Authorization: Bearer YOUR_
 
 ### Reply queue
 
-Add `"queue": true` to a hand-picked reply and it waits in a queue instead of going out now. The 15-minute check sends queued replies oldest first, at most 2 per run and 80 a day, and never while Instagram is blocking comments, so nothing is lost during a block.
+Add `"queue": true` to a hand-picked reply and it waits in a queue instead of going out now. The 10-minute comment check sends queued replies oldest first, at most 2 per 10 minutes and 50 a day, and never while Instagram is blocking comments, so nothing is lost during a block.
 
 ```bash
 curl -s -X POST https://kinsburg.com/admin/reply -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d '{"commentId":"17900000000000000","message":"Your villa is built 🏝️","queue":true}'

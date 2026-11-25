@@ -141,6 +141,12 @@ async function mockHandler(req, res) {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+/** One round of the live schedules, in order: the 10-minute comment scan, then the 15-minute city step. */
+const runSchedules = async () => {
+  const r = await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('*/10 * * * *')}`);
+  await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`);
+  return r;
+};
 const admin = (path, body) =>
   fetch(BASE + path, {
     method: body === undefined ? 'GET' : 'POST',
@@ -246,7 +252,7 @@ try {
 
   console.log('\ncomment poller (cron)');
   const before = mockHits;
-  r = await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`);
+  r = await runSchedules();
   ok(r.status === 200, 'scheduled handler ran');
   ok(mockHits > before, 'poller called the Instagram API', mockHits - before);
   ({ data } = await loadCity());
@@ -256,7 +262,7 @@ try {
   ok(!ids.has('bad..handle'), 'invalid handle not joined');
   ok(data.residents.length === 54, 'exactly 3 new residents (duplicate comment joined once)', data.residents.length);
   try { validateCityData(data); ok(true, 'city still valid after joins'); } catch (e) { ok(false, 'city still valid after joins', String(e)); }
-  await fetch(`${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`);
+  await runSchedules();
   ({ data } = await loadCity());
   ok(data.residents.length === 54, 'second poll adds nobody (comments remembered)', data.residents.length);
   ok(replyHits.length === 2 && replyHits[0].message.includes('\n') && /Follow/.test(replyHits[0].message) && /@(new_person1|second\.person|third_person)\b/.test(replyHits[0].message), 'one welcome reply greeting them by @username, then Instagram blocks the second', replyHits);
@@ -561,7 +567,6 @@ try {
   rmSync(pubDir, { recursive: true, force: true });
 
   console.log('\nbuild what you ask + bestie neighbours');
-  const POLL = `${BASE}/__scheduled?cron=${encodeURIComponent('7,22,37,52 * * * *')}`;
   const pop0 = (await loadCity()).data.residents.length;
   const cashNow = async () => (await (await admin('/admin/cash')).json()).cash;
   const cash0 = await cashNow();
@@ -574,7 +579,7 @@ try {
     { id: 'f1', text: 'MOVE IN @Bestie.One', username: 'friend_a' },
     { id: 'f2', text: 'MOVE IN @third_person', username: 'new_person1' }, // both already live here
   );
-  await fetch(POLL);
+  await runSchedules();
   let t = await (await fetch(`${BASE}/api/city/town.json`)).json();
   const reqOf = (k) => t.requests?.find((x) => x.kind === k);
   ok(reqOf('pool')?.likes === 8 && reqOf('pool')?.count === 2 && reqOf('ferris')?.likes === 9, 'build requests are counted with their likes', t.requests);
@@ -588,9 +593,9 @@ try {
   const cash1 = await cashNow();
   ok(cash1 - cash0 === 1500 + 4 * 1500, 'city cash: $1,500 for the move-in and $1,500 for each of 4 new followers', { cash0, cash1 });
   FOLLOWERS = 42;
-  await fetch(POLL);
+  await runSchedules();
   FOLLOWERS = 44;
-  await fetch(POLL);
+  await runSchedules();
   ok((await cashNow()) === cash1, 'an unfollow and refollow never pays twice');
 
   // the ferris wheel ($125,000) is the most-liked: the city can't afford it yet, so it saves up
@@ -614,7 +619,7 @@ try {
   ok(led.some((x) => x.kind === 'home' && x.amount === -50000) && led.some((x) => x.kind === 'build' && x.amount === -125000) && led.some((x) => x.kind === 'follows' && x.amount === 6000), 'every dollar is in the ledger', led.slice(0, 6));
 
   COMMENTS.m2[0].push({ id: 'f3', text: 'MOVE IN', username: 'bestie.one' });
-  await fetch(POLL);
+  await runSchedules();
   ({ data } = await loadCity());
   t = await (await fetch(`${BASE}/api/city/town.json`)).json();
   ok(data.residents.find((x) => x.id === 'bestie.one')?.number === fa.number + 1 && data.residents.length === pop0 + 2, 'the friend moves into the held plot next door', { friend: data.residents.find((x) => x.id === 'bestie.one')?.number, expected: fa.number + 1, residents: data.residents.length, wanted: pop0 + 2 });

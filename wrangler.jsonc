@@ -34,7 +34,8 @@
 
   "triggers": {
     "crons": [
-      "7,22,37,52 * * * *", // Instagram comment poller, every 15 min, off the top of the hour
+      "*/10 * * * *", // Instagram comments: queued replies + the comment scan, every 10 min
+      "7,22,37,52 * * * *", // the city: builds, simulation, politics, announcements, every 15 min (96 steps a day)
       "41 3 * * 1"          // weekly long-lived Instagram token refresh (Mondays 03:41 UTC)
     ]
   },
@@ -54,7 +55,7 @@
     "IG_REPLY_ENABLED": "true", // welcome replies, paced: they share the 2-per-run / 80-a-day allowance with queued replies and pause during blocks
     "IG_CALLS_ENABLED": "true", // announce calls for help and elections under the latest post
     "IG_REPLY_MAX_PER_RUN": "2", // a human pace; Instagram blocks bursts of replies
-    "IG_REPLY_MAX_PER_DAY": "80",
+    "IG_REPLY_MAX_PER_DAY": "50", // Instagram blocked the account after ~57 replies in a day at 8/hour
     // Turn these on only after Meta grants Advanced Access (App Review):
     "IG_DM_ENABLED": "false",            // MOVE IN / MOVE OUT by DM, follower badge
     "IG_PRIVATE_REPLY_ENABLED": "false", // one private "your house is ready" reply per new resident
