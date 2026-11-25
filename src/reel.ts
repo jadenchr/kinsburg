@@ -60,10 +60,10 @@ export interface KinsburgReel {
   card(id: string, overrides?: Partial<Resident>): Promise<string>;
   /** scripted camera for the launch reels; returns targets it couldn't find */
   setScript(s: { duration: number; keys: { t: number; target: string; zoom?: number; y?: number }[]; hours?: { t: number; h: number }[]; dark?: { id: string; until: number }[]; rings?: { id: string; from: number; to?: number }[]; labels?: ReelLabel[]; actors?: ReelActor[]; ease?: 'cubic' | 'sine' }): string[];
-  /** world position of a resident's home (to pick neighbours) */
+  /** world position of anything the camera can aim at (a resident's home, build:<id>, open:<k>, landmark:<kind>) */
   where(id: string): { x: number; y: number } | null;
   /** every resident with their address, for choosing who to feature */
-  residents: { id: string; handle: string; job: string; number: number; level: number; perks: string[]; pet: string | null; address: string | null }[];
+  residents: { id: string; handle: string; job: string; number: number; level: number; perks: string[]; pet: string | null; address: string | null; home: string | null }[];
 }
 
 declare global {
@@ -134,7 +134,23 @@ export interface ReelActor {
 }
 
 /** A name tag pinned above a home in a scripted reel (fades in and out, stays the same size on screen). */
-export interface ReelLabel { id: string; text: string; sub?: string; from: number; to: number; lift?: number }
+/** A tag over a home. With `num` it's a small name tag ("#12 @handle", the number in gold) for tours of many homes. */
+export interface ReelLabel { id: string; text: string; sub?: string; num?: string; from: number; to: number; lift?: number }
+
+/** Sizes of a tag's plate (px at 1080 wide): the big hover card, or the small name tag when it has a number. */
+function tagStyle(l: ReelLabel) {
+  return l.num
+    ? { font: 27, subFont: 0, padX: 16, h: 48, base: 33, stem: 34, r: 14 }
+    : { font: 36, subFont: 23, padX: 26, h: l.sub ? 92 : 64, base: 44, stem: 70, r: 20 };
+}
+function tagWidth(ctx: CanvasRenderingContext2D, l: ReelLabel, u: number) {
+  const st = tagStyle(l);
+  ctx.font = `800 ${st.font * u}px ${FONTS.ui}`;
+  const tw = ctx.measureText(l.text).width + (l.num ? ctx.measureText(l.num + ' ').width : 0);
+  ctx.font = `700 ${st.subFont * u}px ${FONTS.ui}`;
+  const sw = l.sub && !l.num ? ctx.measureText(l.sub).width : 0;
+  return Math.max(tw, sw) + st.padX * 2 * u;
+}
 
 /**
  * Glide between two cameras keeping the closer shot's centre on a straight screen path
@@ -242,14 +258,11 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 /** Size of a tag's plate and where its roof is on screen, for layout and drawing. */
 function labelBox(ctx: CanvasRenderingContext2D, l: ReelLabel, p: ReelTarget, cam: ReelCamera, W: number, H: number) {
   const u = W / 1080;
-  ctx.font = `800 ${36 * u}px ${FONTS.ui}`;
-  const tw = ctx.measureText(l.text).width;
-  ctx.font = `700 ${23 * u}px ${FONTS.ui}`;
-  const sw = l.sub ? ctx.measureText(l.sub).width : 0;
-  const w = Math.max(tw, sw) + 52 * u, h = (l.sub ? 92 : 64) * u;
+  const st = tagStyle(l);
+  const w = tagWidth(ctx, l, u), h = st.h * u;
   const rx = W / 2 + (p.x - cam.x) * cam.zoom;
   const roof = H / 2 + (p.y - p.height * 0.95 - cam.y) * cam.zoom;
-  return { u, w, h, rx, roof };
+  return { u, w, h, rx, roof, stem: st.stem };
 }
 
 /**
@@ -264,10 +277,10 @@ function layoutLabels(canvas: HTMLCanvasElement, cam: ReelCamera, labels: ReelLa
   for (const { i, p } of order) {
     const l = labels[i];
     const b = labelBox(ctx, l, p!, cam, W, H);
-    const gap = 14 * b.u;
+    const gap = (l.num ? 6 : 14) * b.u;
     let lift = (l.lift ?? 0) * b.u;
     for (let k = 0; k < 60; k++) {
-      const y1 = b.roof - 70 * b.u - lift, y0 = y1 - b.h, x0 = b.rx - b.w / 2, x1 = b.rx + b.w / 2;
+      const y1 = b.roof - b.stem * b.u - lift, y0 = y1 - b.h, x0 = b.rx - b.w / 2, x1 = b.rx + b.w / 2;
       if (!placed.some((r) => x0 < r.x1 + gap && x1 > r.x0 - gap && y0 < r.y1 + gap && y1 > r.y0 - gap)) {
         placed.push({ x0, y0, x1, y1 });
         break;
@@ -294,15 +307,12 @@ function drawLabels(canvas: HTMLCanvasElement, cam: ReelCamera, labels: ReelLabe
     const e = a * a * (3 - 2 * a); // smoothstep for the fade and the rise
     const rx = W / 2 + (p.x - cam.x) * cam.zoom;
     const roof = H / 2 + (p.y - p.height * 0.95 - cam.y) * cam.zoom;
-    const stem = (70 + (lifts[li] ?? 0)) * u;
+    const st = tagStyle(l);
+    const stem = (st.stem + (lifts[li] ?? 0)) * u;
     const bottom = roof - stem + (1 - e) * 14 * u;
     ctx.globalAlpha = e;
-    ctx.font = `800 ${36 * u}px ${FONTS.ui}`;
-    const tw = ctx.measureText(l.text).width;
-    ctx.font = `700 ${23 * u}px ${FONTS.ui}`;
-    const sw = l.sub ? ctx.measureText(l.sub).width : 0;
-    const padX = 26 * u, h = (l.sub ? 92 : 64) * u;
-    const w = Math.max(tw, sw) + padX * 2;
+    const h = st.h * u;
+    const w = tagWidth(ctx, l, u);
     const x = Math.min(Math.max(rx - w / 2, 24 * u), W - 24 * u - w);
     const y = bottom - h;
     // stem and roof dot
@@ -310,17 +320,27 @@ function drawLabels(canvas: HTMLCanvasElement, cam: ReelCamera, labels: ReelLabe
     ctx.lineWidth = 2.5 * u;
     ctx.beginPath(); ctx.moveTo(rx, bottom); ctx.lineTo(rx, roof - 6 * u); ctx.stroke();
     ctx.fillStyle = COLORS.gold;
-    ctx.beginPath(); ctx.arc(rx, roof - 6 * u, 5.5 * u, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(rx, roof - 6 * u, (l.num ? 4 : 5.5) * u, 0, Math.PI * 2); ctx.fill();
     // plate (flat, neutral shadow)
     ctx.fillStyle = 'rgba(11,20,48,0.35)';
-    roundRect(ctx, x, y + 6 * u, w, h, 20 * u); ctx.fill();
+    roundRect(ctx, x, y + (l.num ? 4 : 6) * u, w, h, st.r * u); ctx.fill();
     ctx.fillStyle = alpha(COLORS.nightPaper, 0.94);
-    roundRect(ctx, x, y, w, h, 20 * u); ctx.fill();
-    ctx.textAlign = 'center';
+    roundRect(ctx, x, y, w, h, st.r * u); ctx.fill();
     ctx.textBaseline = 'alphabetic';
+    ctx.font = `800 ${st.font * u}px ${FONTS.ui}`;
+    if (l.num) {
+      // "#12 @handle": the number in gold, then the handle
+      ctx.textAlign = 'left';
+      const nx = x + st.padX * u;
+      ctx.fillStyle = COLORS.gold;
+      ctx.fillText(l.num, nx, y + st.base * u);
+      ctx.fillStyle = COLORS.paper;
+      ctx.fillText(l.text, nx + ctx.measureText(l.num + ' ').width, y + st.base * u);
+      continue;
+    }
+    ctx.textAlign = 'center';
     ctx.fillStyle = COLORS.paper;
-    ctx.font = `800 ${36 * u}px ${FONTS.ui}`;
-    ctx.fillText(l.text, x + w / 2, y + (l.sub ? 44 : 44) * u);
+    ctx.fillText(l.text, x + w / 2, y + st.base * u);
     if (l.sub) {
       ctx.fillStyle = COLORS.gold;
       ctx.font = `700 ${23 * u}px ${FONTS.ui}`;
@@ -463,6 +483,10 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
     const id = normalise(spec);
     if (id === 'wide') return null;
     if (id === 'next') return rc.nextLot();
+    if (/^open:\d+$/.test(id)) return rc.nextLot(Number(id.slice(5)));
+    // a point on the ground, for framing a group of homes: 'xy:<x>,<y>' in world px
+    const xy = id.match(/^xy:(-?[\d.]+),(-?[\d.]+)$/);
+    if (xy) return { x: Number(xy[1]), y: Number(xy[2]), height: 0, size: 1 };
     if (id.startsWith('landmark:')) return rc.landmark(id.slice(9));
     if (id.startsWith('lot:')) return rc.emptyLotNear(id.slice(4));
     if (SPEC.test(id)) return specTarget(rc, id);
@@ -543,7 +567,8 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
         ctx.restore();
       }
       if (script.labels.length) {
-        const find = (id: string) => rc.resident(id);
+        // tags can sit on anything the camera can aim at: homes, builds (build:<id>), open plots (open:<k>)
+        const find = (id: string) => resolveTarget(id);
         if (!script.lifts) {
           // lay the tags out where they're read: the middle of the time they're all up
           const tRef = (Math.max(...script.labels.map((l) => l.from)) + Math.min(...script.labels.map((l) => l.to))) / 2;
@@ -623,10 +648,10 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
       return [...missing, ...missingActors];
     },
     where(id) {
-      const t = rc.resident(normalise(id));
+      const t = resolveTarget(id);
       return t ? { x: t.x, y: t.y } : null;
     },
-    residents: data.residents.map((r) => ({ id: r.id, handle: r.handle, job: r.job, number: r.number, level: r.level ?? 0, perks: r.perks, pet: r.pet ?? null, address: addressOf(r, data) })),
+    residents: data.residents.map((r) => ({ id: r.id, handle: r.handle, job: r.job, number: r.number, level: r.level ?? 0, perks: r.perks, pet: r.pet ?? null, address: addressOf(r, data), home: r.home ?? null })),
     async card(id, overrides = {}) {
       const r = byId.get(normalise(id));
       if (!r) throw new Error(`no resident ${id}`);

@@ -855,15 +855,17 @@ export const createCityView: CreateCityView = (canvas) => {
    * order (checked from 4 to 20,000 residents), so it's the lowest empty house plot above the
    * highest one taken.
    */
-  function nextLot(): number | undefined {
+  /** The empty house plot the k-th next resident moves into (0 = the very next one). */
+  function nextLot(k = 0): number | undefined {
     if (!model) return undefined;
     let taken = -1;
     for (const o of model.objs) if (o.kind === 'house' && o.plot) taken = Math.max(taken, o.plot.id);
-    let best: number | undefined, bestId = Infinity;
-    model.objs.forEach((o, k) => {
-      if (o.kind === 'lot' && o.plot && o.plot.kind === 'house' && o.plot.id > taken && o.plot.id < bestId) { bestId = o.plot.id; best = k; }
+    const open: { id: number; k: number }[] = [];
+    model.objs.forEach((o, i) => {
+      if (o.kind === 'lot' && o.plot && o.plot.kind === 'house' && o.plot.id > taken) open.push({ id: o.plot.id, k: i });
     });
-    return best;
+    open.sort((a, b) => a.id - b.id);
+    return open[k]?.k;
   }
 
   function reelControl(): ReelControl {
@@ -915,7 +917,7 @@ export const createCityView: CreateCityView = (canvas) => {
           // 'lot:<resident>' rings the empty plot nearest that resident (the next house to come)
           const oi = id.startsWith('build:') ? model.byBuild.get(id === 'build:latest' ? Math.max(-1, ...model.byBuild.keys()) : Number(id.slice(6)))
             : id.startsWith('hold:') ? model.byHold.get(Number(id.slice(5)))
-            : id === 'next' ? nextLot() : id.startsWith('lot:') ? nearestLot(id.slice(4)) : model.byResident.get(id);
+            : id === 'next' ? nextLot() : id.startsWith('open:') ? nextLot(Number(id.slice(5))) : id.startsWith('lot:') ? nearestLot(id.slice(4)) : model.byResident.get(id);
           if (oi !== undefined) rings.push(oi);
         }
         render(f.t * 1000, true, rings, f.t * 1000);
@@ -934,8 +936,8 @@ export const createCityView: CreateCityView = (canvas) => {
           }
         }
       },
-      nextLot() {
-        const li = nextLot();
+      nextLot(k = 0) {
+        const li = nextLot(k);
         return li === undefined || !model ? null : targetOf(model.objs[li]);
       },
       emptyLotNear(id) {

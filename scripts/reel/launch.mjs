@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { ambientArgs, loopVideo, parseArgs, probe, run, sleep } from './lib.mjs';
 import { BUILD_BY_KIND } from '../../shared/builds.mjs';
+import { BAR, writeMusic } from './music.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = parseArgs();
@@ -33,10 +34,14 @@ const FOLDER = {
   A: 'launch/launch-01-yours-is-still-dark', B: 'launch/launch-02-comment-two-words', C: 'launch/launch-03-the-city-picks-your-job',
   D: 'launch/launch-04-house-number-4-is-empty', T1: 'in-this-town/in-this-town-01-rules-of-kinsburg', L1: 'live/live-01-lets-build-this-city',
   T2: 'in-this-town/in-this-town-02-six-seven', T3: 'in-this-town/in-this-town-03-the-update',
+  TR: 'tour/city-tour',
   // E (daily episodes) picks its own folder: episodes/episode-NN
 };
 const ONLY = args.only ? String(args.only).toUpperCase() : null;
 const BASE = (args.url ?? process.env.KINSBURG_URL ?? '').replace(/\/+$/, '');
+// --api https://kinsburg.com: film this checkout's build (dist/) with the live city's residents, to try
+// renderer changes before they're deployed
+const API = String(args.api ?? '').replace(/\/+$/, '');
 const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
 const KOKORO_PYTHON = process.env.KOKORO_PYTHON ?? join(ROOT, '..', 'thelastone - like', 'from-day-30', '.venv-tts', 'bin', 'python');
 const log = (...a) => console.log('[launch]', ...a);
@@ -59,6 +64,13 @@ async function site() {
 }
 async function cityPage(base) {
   const page = await browser.newPage({ viewport: { width: 540, height: 960 }, deviceScaleFactor: 1 });
+  if (API) {
+    await page.route('**/api/**', async (route) => {
+      const u = new URL(route.request().url());
+      const res = await fetch(API + u.pathname + u.search);
+      await route.fulfill({ status: res.status, headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' }, body: Buffer.from(await res.arrayBuffer()) });
+    });
+  }
   const q = new URLSearchParams({ reel: '1', w: String(W), h: String(H), fps: String(FPS), duration: '60' });
   await page.goto(`${base}/?${q}`, { waitUntil: 'load', timeout: 60_000 });
   await page.waitForFunction(() => !!window.kinsburgReel, null, { timeout: 60_000 });
@@ -168,6 +180,41 @@ const CSS = `
 .ep-tag{position:absolute;left:0;right:0;top:820px;display:flex;justify-content:center}
 .ep-tag div{background:${C.white};color:${C.ink};border:5px solid ${C.ink};border-radius:16px;padding:10px 26px;font-size:46px;font-weight:900;text-transform:uppercase}
 .ep-minus{position:absolute;left:0;right:0;top:700px;text-align:center;font-size:110px;font-weight:900;color:#e2574a;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 30px rgba(11,20,48,.5)}
+.tr-shade{position:absolute;left:0;right:0;top:0;height:760px;background:linear-gradient(rgba(8,14,34,.62),rgba(8,14,34,.38) 55%,rgba(8,14,34,0))}
+.tr-top{position:absolute;left:64px;right:64px;top:250px;text-align:center;color:${C.white};text-shadow:0 3px 0 rgba(11,20,48,.45),0 8px 28px rgba(11,20,48,.55)}
+.tr-kick{font-size:27px;font-weight:800;letter-spacing:.34em;text-transform:uppercase;color:${C.gold}}
+.tr-head{font-size:82px;font-weight:900;line-height:1.06;letter-spacing:-.012em;margin-top:16px;text-wrap:balance}
+.tr-head b{color:${C.gold}}
+.tr-sub{font-size:38px;font-weight:700;margin-top:18px;text-wrap:balance;opacity:.94}
+.tr-count{position:absolute;left:0;right:0;top:1090px;display:flex;justify-content:center}
+.tr-count div{background:rgba(11,20,48,.88);border:3px solid rgba(255,201,92,.5);border-radius:30px;padding:22px 70px 16px;text-align:center;color:${C.white};min-width:420px}
+.tr-count span{display:block;font-size:27px;font-weight:800;letter-spacing:.22em;color:${C.gold}}
+.tr-count b{display:block;font-size:156px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px}
+.tr-chips{position:absolute;left:30px;right:30px;top:1404px;display:flex;justify-content:center;gap:12px}
+.tr-chips i{font-style:normal;background:rgba(11,20,48,.8);color:${C.white};border-radius:999px;padding:10px 22px;font-size:27px;font-weight:800;opacity:.75;white-space:nowrap}
+.tr-chips i.on{background:${C.gold};color:${C.ink};opacity:1}
+.tr-mid{position:absolute;left:0;right:0;top:640px;display:flex;flex-direction:column;align-items:center;gap:34px}
+.tr-id{width:900px;background:linear-gradient(135deg,#1f2d57,#141d3d);border:3px solid rgba(255,201,92,.6);border-radius:34px;padding:30px 40px 26px;color:${C.white};box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.tr-id-top{display:flex;justify-content:space-between;font-size:24px;font-weight:800;letter-spacing:.24em;color:${C.gold}}
+.tr-id-body{display:flex;gap:34px;margin-top:26px;align-items:center}
+.tr-id-pic{width:190px;height:190px;border-radius:26px;background:rgba(255,201,92,.14);border:3px solid rgba(255,201,92,.45);display:flex;align-items:center;justify-content:center;font-size:110px;flex:none}
+.tr-id small{display:block;font-size:22px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;opacity:.6}
+.tr-id-name{font-size:64px;font-weight:900;line-height:1.05}
+.tr-id-grid{display:flex;gap:34px;margin-top:16px}.tr-id-grid b{font-size:36px;font-weight:900}
+.tr-id-foot{display:flex;justify-content:space-between;align-items:center;margin-top:24px}
+.tr-id-badge{background:${C.gold};color:${C.ink};border-radius:999px;padding:8px 24px;font-size:26px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.tr-id-mrz{font-family:ui-monospace,Menlo,monospace;font-size:21px;letter-spacing:.12em;opacity:.45}
+.tr-prog{width:760px;text-align:center;color:${C.white};font-size:32px;font-weight:800;text-shadow:0 3px 14px rgba(11,20,48,.7)}
+.tr-prog div{height:16px;border-radius:999px;background:rgba(255,255,255,.22);overflow:hidden;margin-bottom:14px}
+.tr-prog i{display:block;height:100%;background:${C.gold};border-radius:999px}
+.tr-prog b{color:${C.gold}}
+.tr-list{width:920px;background:rgba(11,20,48,.9);border-radius:30px;padding:14px 34px;color:${C.white};box-shadow:0 14px 40px rgba(0,0,0,.4)}
+.tr-row{display:flex;align-items:center;gap:22px;padding:18px 0;border-bottom:2px solid rgba(255,255,255,.1)}.tr-row:last-child{border-bottom:0}
+.tr-row em{font-style:normal;font-size:54px;width:70px;text-align:center}
+.tr-row div{flex:1}.tr-row div b{display:block;font-size:40px;font-weight:900}.tr-row div span{font-size:27px;font-weight:700;opacity:.7}
+.tr-row u{text-decoration:none;font-size:27px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:8px 20px;background:rgba(127,211,138,.2);color:#8be39a;white-space:nowrap}
+.tr-row u.gold{background:rgba(255,201,92,.18);color:${C.gold}}
+.tr-btn{background:${C.gold};color:${C.ink};border-radius:999px;padding:26px 60px;font-size:46px;font-weight:900;box-shadow:0 10px 0 rgba(11,20,48,.35)}
 `;
 let ovPage;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -231,7 +278,7 @@ async function film(page, tmp, name, shot) {
 }
 
 /** Shots joined by dissolves (each shot starts at `at`), every overlay on the global timeline, narration over a quiet bed. */
-async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, loop = true, exactLoop = false, folder, rewriteCaption = false }) {
+async function finish(tmp, id, { shots, overlays, voice, duration, caption, coverAt, coverHtml, coverBg, xf = XF, loop = true, exactLoop = false, folder, rewriteCaption = false, music = null, musicVolume = 1 }) {
   const where = folder ?? FOLDER[id] ?? `drafts/${id}`;
   const dir = join(OUT, where);
   const name = `kinsburg-${where.split('/').pop()}`;
@@ -271,8 +318,10 @@ async function finish(tmp, id, { shots, overlays, voice, duration, caption, cove
     k++;
   }
   vchain.push(`[${last}]format=yuv420p[vout]`);
-  const bed = join(tmp, `${id}-bed.wav`);
-  if (!loop) await run(FFMPEG, ambientArgs(duration, bed, id.charCodeAt(0)));
+  // music: a track made for this reel (scripts/reel/music.mjs, already loop-ready); otherwise the quiet ambient bed
+  const bed = music ?? join(tmp, `${id}-bed.wav`);
+  if (music) { /* nothing to make */ }
+  else if (!loop) await run(FFMPEG, ambientArgs(duration, bed, id.charCodeAt(0)));
   else {
     // seamless loop: render the bed longer with no fades, then cross-fade its tail into its start,
     // so the last sample flows straight into the first when Instagram repeats the video
@@ -285,7 +334,7 @@ async function finish(tmp, id, { shots, overlays, voice, duration, caption, cove
       '-map', '[o]', '-c:a', 'pcm_s16le', bed]);
   }
   const vo = k, bd = k + 1;
-  const achain = `[${vo}:a]apad,atrim=0:${duration}[vo];[${bd}:a]volume=0.22[bed];[vo][bed]amix=inputs=2:normalize=0,alimiter=limit=0.89[aout]`;
+  const achain = `[${vo}:a]apad,atrim=0:${duration}[vo];[${bd}:a]volume=${music ? musicVolume : 0.22}[bed];[vo][bed]amix=inputs=2:normalize=0,alimiter=limit=0.89[aout]`;
   const mp4 = join(dir, `${name}.mp4`);
   await run(FFMPEG, ['-hide_banner', '-y', ...inputs, ...ovIn, '-i', voice.wav, '-i', bed,
     '-filter_complex', vchain.join(';') + ';' + achain, '-map', '[vout]', '-map', '[aout]', '-t', duration.toFixed(3), '-r', String(FPS),
@@ -940,7 +989,7 @@ async function reelT3({ tmp, page, R }) {
 // Made entirely from the day's summary the 12:00 UTC build run records (town.json cityCash.today):
 // residents and followers yesterday -> today, the money that came in, the comment wall with real
 // handles, what the city bought (flying to each real build), what's left and what's next.
-const EP_START_DAY = 14; // the city day of episode 1
+const EP_START_DAY = 14; // the city day of episode 1 (then every other day: 16, 18…)
 // kinds newer than this copy of shared/builds.mjs still read well
 const EXTRA_KINDS = { university: { label: 'University', emoji: '🎓' } };
 const kindLabel = (k) => BUILD_BY_KIND[k]?.label ?? EXTRA_KINDS[k]?.label ?? k.charAt(0).toUpperCase() + k.slice(1);
@@ -950,7 +999,10 @@ async function reelE({ tmp, page, R }) {
   const town = await page.evaluate(() => fetch('/api/city/town.json').then((r) => r.json()));
   const cc = town?.cityCash, T = cc?.today;
   if (!T || !Array.isArray(T.wall)) throw new Error('no daily build run with episode data yet (it runs at 12:00 UTC)');
-  const N = Math.max(1, T.day - EP_START_DAY + 1), NN = String(N).padStart(2, '0');
+  // episodes alternate with the city tour: episodes on even days from EP_START_DAY, tours in between
+  const off = T.day - EP_START_DAY;
+  if (off % 2 && !args.force) throw new Error(`city day ${T.day} is a tour day (episodes are every other day): npm run reel:launch -- --only TR --url https://kinsburg.com`);
+  const N = Math.max(1, Math.floor(off / 2) + 1), NN = String(N).padStart(2, '0');
   const first = N === 1 || !T.prev;
   const prevRes = T.prev?.residents ?? 3, nowRes = T.residents;
   const inc = T.income ?? {};
@@ -1092,6 +1144,268 @@ async function reelE({ tmp, page, R }) {
   return { episode: N, built: buys.map((b) => b.label), after: T.after };
 }
 
+
+// ── City tour: "Every follower who comments MOVE IN gets a house in this city" ──
+// Made like Keystone City's tour (own.ur.property): Jadie says the hook, then music and big text tour
+// the live city: the resident counter, three streets with every resident's name tag (the newest with
+// its open lots), the free villas and skyscrapers left, the resident card that's coming, what comments
+// built, a thank-you over every home, and an end card. Every cut lands on a bar of the music.
+//   npm run reel:launch -- --only TR --url https://kinsburg.com        (add --stills for a quick look)
+async function reelTour({ tmp, page, R }) {
+  const town = await page.evaluate(() => fetch('/api/city/town.json').then((r) => r.json()));
+  const n = R.length, next = n + 1;
+  const homes = town?.homes ?? { villa: { limit: 100, taken: 0 }, skyscraper: { limit: 100, taken: 0 } };
+  const left = { villa: homes.villa.limit - homes.villa.taken, skyscraper: homes.skyscraper.limit - homes.skyscraper.taken };
+  const FOUNDING = 1000;
+  const byNum = [...R].sort((a, b) => a.number - b.number);
+
+  // streets in move-in order: the founders' street opens the reel, then two more, ending on the newest
+  const streetOf = (r) => (r.address ?? '').replace(/^\d+\s+/, '');
+  const groups = new Map();
+  for (const r of byNum) if (streetOf(r)) (groups.get(streetOf(r)) ?? groups.set(streetOf(r), []).get(streetOf(r))).push(r);
+  const streets = [...groups].map(([name, rs]) => ({ name, rs, lo: rs[0].number, hi: rs.at(-1).number })).sort((a, b) => a.lo - b.lo);
+  const founders = streets[0];
+  const newest = streets.find((s) => s.rs.some((r) => r.number === byNum.at(-1).number));
+  const middle = [...streets.filter((s) => s !== founders && s !== newest)].sort((a, b) => b.rs.length - a.rs.length);
+  const tourStreets = [middle.find((s) => s.lo < (newest?.lo ?? Infinity) / 2) ?? middle[0], middle.find((s) => s.lo > (newest?.lo ?? 0) / 2) ?? middle[1], newest].filter(Boolean);
+  const villas = byNum.filter((r) => r.home === 'villa'), skys = byNum.filter((r) => r.home === 'skyscraper');
+  const builds = (town?.builds ?? []).map((b) => ({ ...b, id: `build:${b.id}`, label: kindLabel(b.kind), emoji: kindEmoji(b.kind), city: b.by === (town.account ?? 'kinsburgtown') }));
+  const OPEN = [0, 1, 2, 3, 4, 5].map((k) => `open:${k}`);
+
+  // where everything is, and cameras that frame a group of it
+  const pos = Object.fromEntries(await page.evaluate((ids) => ids.map((id) => [id, window.kinsburgReel.where(id)]), [...R.map((r) => r.id), ...builds.map((b) => b.id), ...OPEN]));
+  const frame = (ids, { frac = 0.82, min = 0.5, max = 3, y = 0.62 } = {}) => {
+    const ps = ids.map((id) => pos[id]).filter(Boolean);
+    const xs = ps.map((p) => p.x), ys = ps.map((p) => p.y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const zoom = Math.max(min, Math.min(max, (W * frac) / Math.max(160, x1 - x0), (H * 0.36) / Math.max(120, y1 - y0)));
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    return { target: `xy:${cx.toFixed(1)},${cy.toFixed(1)}`, zoom, y, cx, cy };
+  };
+  // is this home inside the frame (below the headline, above Instagram's caption), at zoom × k
+  const screen = (id, f, k = 1) => { const p = pos[id], z = f.zoom * k; return p ? { x: W / 2 + (p.x - f.cx) * z, y: f.y * H + (p.y - f.cy) * z } : null; };
+  const onScreen = (id, f, k = 1, top = 760) => {
+    const q = screen(id, f, k);
+    return !!q && q.x > 50 && q.x < W - 50 && q.y > top && q.y < 1560;
+  };
+  // the biggest bunch of homes within `r` world px of each other (villas and skyscrapers are spread out)
+  const cluster = (list, r = 420) => list.map((a) => list.filter((b) => Math.hypot(pos[a.id].x - pos[b.id].x, pos[a.id].y - pos[b.id].y) < r)).sort((a, b) => b.length - a.length)[0] ?? list;
+  const drift = (f, d, k = 1.08) => [{ t: 0, target: f.target, zoom: f.zoom, y: f.y }, { t: d, target: f.target, zoom: f.zoom * k, y: f.y }];
+  const tag = (r, from, to) => ({ id: r.id, num: `#${r.number}`, text: `@${r.handle}`, from, to });
+  const all0 = frame(R.map((r) => r.id), { frac: 1.0, min: 0.3, y: 0.55 });
+  const all = { ...all0, zoom: all0.zoom * 1.2 }; // a little closer than the whole city, so it fills the frame
+
+  // ── timeline in bars of the music ──
+  const sections = [];
+  // each section: its shortest length in bars, the shot, the on-screen text, and what Jadie says over it
+  const S = (key, bars, build, text, line) => sections.push({ key, bars, build, text, line });
+  const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+  const hookF = frame(founders.rs.map((r) => r.id), { frac: 0.95, min: 1.6, max: 2.8, y: 0.7 });
+  // homes in the first frame wear their name tags from frame one (it's also where the loop lands); the
+  // ones nearest the middle, so the stacked tags stay under the headline
+  const hookTags = R.filter((r) => onScreen(r.id, hookF, 1.1, 900)).sort((a, b) => Math.abs(screen(a.id, hookF).x - W / 2) - Math.abs(screen(b.id, hookF).x - W / 2)).slice(0, 16);
+  S('hook', 2, (d) => ({ keys: drift(hookF, d, 1.1), labels: hookTags.map((r) => tag(r, -1, d + 1)) }),
+    { kick: 'Kinsburg · city tour', head: 'Every follower gets a <b>house</b> in this city.', sub: 'Follow + comment MOVE IN' },
+    { text: 'Every follower who comments MOVE IN gets a house in this city.', say: 'Every follower who comments, move in, gets a house in this city.' });
+  S('count', 2, (d) => ({
+    keys: [{ t: 0, target: hookF.target, zoom: hookF.zoom * 1.1, y: hookF.y }, { t: d * 0.7, target: all.target, zoom: all.zoom, y: all.y }, { t: d, target: all.target, zoom: all.zoom * 1.03, y: all.y }],
+    rings: byNum.map((r, i) => ({ id: r.id, from: 0.35 + (i / n) * (d * 0.75) })),
+  }), { head: `It started with 3 people.<br>Now <b>${n}</b> live here.`, sub: 'and it’s growing every day' },
+    { text: `It started with 3 people. Now ${n} people live in this city.`, say: `It started with three people. Now, ${sayNumber(n)} people live in this city.` });
+  for (const [i, st] of tourStreets.entries()) {
+    const isNew = st === newest;
+    const f = frame([...st.rs.map((r) => r.id), ...(isNew ? OPEN.slice(0, 3) : [])], { frac: 0.86, min: 1.0, max: 2.6 });
+    S(`street${i}`, 2, (d) => ({
+      keys: drift(f, d),
+      labels: [...st.rs.filter((r) => onScreen(r.id, f, 1.08)).map((r) => tag(r, 0.15, d + 1)),
+        ...(isNew ? OPEN.filter((id) => onScreen(id, f, 1.08)).map((id, k) => ({ id, num: `#${next + Number(id.slice(5))}`, text: 'OPEN', from: 0.6 + k * 0.15, to: d + 1 })) : [])],
+      rings: isNew ? OPEN.filter((id) => onScreen(id, f, 1.08)).map((id, k) => ({ id, from: 0.6 + k * 0.15 })) : [],
+    }), {
+      head: `<b>${esc(st.name)}</b>`,
+      sub: isNew ? `The newest street · house #${next} is open` : `${st.rs.length} residents, from #${st.lo} to #${st.hi} · all moved in`,
+      chips: tourStreets.map((s) => s.name), on: i,
+    }, isNew
+      ? { text: `And ${st.name}, our newest street. House #${next} is still open.`, say: `And ${st.name}, our newest street. House number ${sayNumber(next)} is still open.` }
+      : i === 0 ? { text: `This is ${st.name}. ${st.rs.length} neighbours, every house taken.`, say: `This is ${st.name}. ${cap(sayNumber(st.rs.length))} neighbours, every house taken.` }
+      : { text: `${st.name}. ${st.rs.length} more.`, say: `${st.name}. ${cap(sayNumber(st.rs.length))} more.` });
+  }
+  const homeShot = (list, kind) => {
+    const f = frame(cluster(list).map((r) => r.id), { frac: 0.7, min: 1.2, max: 2.8 });
+    return (d) => ({ keys: drift(f, d), labels: list.filter((r) => onScreen(r.id, f, 1.08)).map((r) => ({ id: r.id, num: kind, text: `@${r.handle}`, from: 0.15, to: d + 1 })), rings: list.map((r) => ({ id: r.id, from: 0.1 })) });
+  };
+  if (villas.length) S('villa', 1.5, homeShot(villas, 'Villa'), { head: `The first 100 villas are <b>free</b>`, sub: `${left.villa} left · comment VILLA` },
+    { text: `The first 100 villas are free. ${left.villa} left. Comment VILLA.`, say: `The first hundred villas are free. ${cap(sayNumber(left.villa))} left. Comment, villa.` });
+  if (skys.length) S('sky', 1.5, homeShot(skys, 'Skyscraper'), { head: `And 100 free <b>skyscrapers</b>`, sub: `${left.skyscraper} left · comment SKYSCRAPER` },
+    { text: `Skyscrapers too. ${left.skyscraper} left. Comment SKYSCRAPER.`, say: `Skyscrapers too. ${cap(sayNumber(left.skyscraper))} left. Comment, skyscraper.` });
+  const squareF = frame(founders.rs.map((r) => r.id), { frac: 1.3, min: 0.9, max: 1.4 });
+  S('card', 1.5, (d) => ({ keys: drift(squareF, d, 1.06) }),
+    { head: 'Coming soon: your <b>resident card</b>', sub: `The first ${FOUNDING.toLocaleString('en-US')} residents become Founding Residents`, card: true },
+    { text: `Soon, every resident gets a resident card. The first ${FOUNDING.toLocaleString('en-US')} become founding residents.`, say: `Soon, every resident gets a resident card. The first ${sayNumber(FOUNDING)} become founding residents.` });
+  if (builds.length) {
+    // builds stand all over the city: one shot per bunch of them (at most two), under one headline
+    const rest = [...builds], bunches = [];
+    while (rest.length && bunches.length < 2) {
+      const b = cluster(rest, 520);
+      bunches.push(b);
+      for (const x of b) rest.splice(rest.indexOf(x), 1);
+    }
+    const text = { head: 'You asked. <b>We built it.</b>', sub: 'The top comment gets built' };
+    // "You asked for a stadium, a shop and a tower. So we built them."
+    const asked = builds.filter((b) => !b.city).slice(0, 3).map((b) => `${aOrAn(b.label)} ${b.label.toLowerCase()}`);
+    const list = asked.length > 1 ? `${asked.slice(0, -1).join(', ')} and ${asked.at(-1)}` : asked[0];
+    const line = asked.length ? { text: `You asked for ${list}. So we built ${asked.length > 1 ? 'them' : 'it'}.` } : { text: 'You asked. We built it.' };
+    for (const [k, bunch] of bunches.entries()) {
+      const f = frame(bunch.map((b) => b.id), { frac: 0.62, min: 1.2, max: 2.4, y: 0.66 });
+      S(`builds${k}`, bunches.length > 1 ? 1 : 2, (d) => ({
+        keys: drift(f, d),
+        labels: builds.filter((b) => onScreen(b.id, f, 1.08)).map((b, j) => ({ id: b.id, text: `${b.emoji} ${b.label}`, sub: b.city ? 'the city’s own pick' : `asked by @${b.by}`, from: 0.15 + j * 0.2, to: d + 1 })),
+        rings: bunch.map((b, j) => ({ id: b.id, from: 0.15 + j * 0.2 })),
+      }), text, k === 0 ? line : null);
+    }
+  }
+  // thank you: a slow pan along the whole city, every home ringed
+  const panZ = all0.zoom * 2.0, span = (Math.max(...R.map((r) => pos[r.id]?.x ?? 0)) - Math.min(...R.map((r) => pos[r.id]?.x ?? 0))) / 2 - W / (2 * panZ);
+  S('thanks', 1.5, (d) => ({
+    keys: [{ t: 0, target: `xy:${(all.cx - Math.max(0, span)).toFixed(1)},${all.cy.toFixed(1)}`, zoom: panZ, y: 0.55 }, { t: d, target: `xy:${(all.cx + Math.max(0, span)).toFixed(1)},${all.cy.toFixed(1)}`, zoom: panZ, y: 0.55 }],
+    rings: byNum.map((r) => ({ id: r.id, from: -1 })),
+  }), { head: 'Thank you, <b>residents</b>', sub: 'Every name on its own home. We keep building.' },
+    { text: 'To every resident: thank you. We keep building.' });
+  S('end', 2, (d) => ({ keys: drift(all, d, 1.06), rings: [{ id: 'open:0', from: 0.3 }] }),
+    { head: 'Follow + comment <b>MOVE IN</b>', sub: 'Comment what we should build next', list: true },
+    { text: 'Follow, and comment MOVE IN. Then tell us what to build next.', say: 'Follow, and comment, move in. Then tell us what to build next.' });
+
+  // ── Jadie narrates every section; each line starts on its section's first bar ──
+  const spoken = sections.filter((sc) => sc.line);
+  const raw = await narrate(tmp, 'TR', spoken.map((sc) => ({ ...sc.line, gap: 0.35 })), JADIE_VOICE);
+  const LEAD = 0.12, TAIL = 0.55; // a beat after the cut before he speaks; room after his last word
+  spoken.forEach((sc, k) => (sc.said = raw.lines[k]));
+  // This tour is voice only (no music), so each shot lasts about as long as Jadie's line: a short beat
+  // after it, and never less than the time it takes to read the screen. With MUSIC on, the shots are
+  // stretched to whole bars of the music instead.
+  const MUSIC = false;
+  const MIN_SEC = { hook: 3.2, count: 3.6, villa: 3.0, sky: 3.0, card: 3.4, thanks: 2.6, end: 3.6 };
+  const minSec = (sc) => MIN_SEC[sc.key] ?? (sc.key.startsWith('street') ? 2.8 : sc.key.startsWith('builds') ? 1.8 : 2.6);
+  if (!MUSIC) {
+    for (const sc of sections) sc.bars = minSec(sc) / BAR;
+    for (const [k, sc] of spoken.entries()) {
+      const i = sections.indexOf(sc), j = k + 1 < spoken.length ? sections.indexOf(spoken[k + 1]) : sections.length;
+      const need = LEAD + (sc.said.end - sc.said.start) + 0.45;
+      const have = sections.slice(i, j).reduce((a, x) => a + x.bars, 0) * BAR;
+      if (have < need) sections[j - 1].bars += (need - have) / BAR;
+    }
+  }
+  // stretch sections (in half bars) until each line fits before the next one starts
+  if (MUSIC) for (const [k, sc] of spoken.entries()) {
+    const i = sections.indexOf(sc), j = k + 1 < spoken.length ? sections.indexOf(spoken[k + 1]) : sections.length;
+    const need = LEAD + (sc.said.end - sc.said.start) + TAIL;
+    const have = sections.slice(i, j).reduce((a, x) => a + x.bars, 0) * BAR;
+    if (have < need) sections[j - 1].bars += Math.ceil((need - have) / (BAR / 2)) / 2;
+  }
+  // whole 4-bar phrases, so the music loops cleanly: the spare half bars go to the sections from the
+  // end backwards, a little each, so no one shot drags
+  const used = sections.reduce((a, x) => a + x.bars, 0);
+  const total = MUSIC ? Math.ceil(used / 4) * 4 : used;
+  if (MUSIC) for (let spare = total - used, i = sections.length - 1; spare > 0; i = i > 1 ? i - 1 : sections.length - 1) { sections[i].bars += 0.5; spare -= 0.5; }
+  const D = total * BAR, xf = 0.2;
+  let t = 0;
+  for (const sc of sections) { sc.from = t; t += sc.bars * BAR; sc.to = t; }
+  const hookBars = sections[0].bars;
+  log(`tour: ${sections.map((sc) => `${sc.key} ${(sc.bars * BAR).toFixed(1)} s${sc.said ? ` (says ${(sc.said.end - sc.said.start).toFixed(1)} s)` : ''}`).join(', ')} = ${D.toFixed(1)} s`);
+
+  // lay each spoken line at its section's start (cut from the one narration, so the voice stays even)
+  const voWav = join(tmp, 'TR-vo-placed.wav');
+  const parts = spoken.map((sc, k) => {
+    const at = sc.from + (sc.key === 'hook' ? 0.05 : LEAD), a = Math.max(0, sc.said.start - 0.03), b = sc.said.end + 0.12;
+    return { k, at, a, b, shift: at - sc.said.start };
+  });
+  await run(FFMPEG, ['-hide_banner', '-y', '-i', raw.wav, '-filter_complex',
+    parts.map((x) => `[0]atrim=${x.a.toFixed(3)}:${x.b.toFixed(3)},asetpts=PTS-STARTPTS,afade=t=out:st=${(x.b - x.a - 0.06).toFixed(3)}:d=0.06,adelay=delays=${Math.round(x.at * 1000)}:all=1[p${x.k}]`).join(';')
+      + `;${parts.map((x) => `[p${x.k}]`).join('')}amix=inputs=${parts.length}:normalize=0,apad,atrim=0:${D.toFixed(3)}[o]`,
+    '-map', '[o]', '-ar', '48000', '-ac', '1', voWav]);
+  const v = { wav: voWav, duration: D, lines: parts.map((x) => ({ ...raw.lines[x.k], start: raw.lines[x.k].start + x.shift, end: raw.lines[x.k].end + x.shift })) };
+
+  const shots = [];
+  for (const [i, sc] of sections.entries()) {
+    const d = sc.to - sc.from + (i < sections.length - 1 ? xf : 0);
+    const spec = { duration: d, ease: 'sine', hours: [{ t: 0, h: args.hour ? Number(args.hour) : 20.6 }], ...sc.build(d) };
+    if (args.stills) {
+      for (const f of [0.05, 0.5, 0.95]) {
+        const missing = await page.evaluate((s) => window.kinsburgReel.setScript(s), spec);
+        if (missing.length) throw new Error(`${sc.key}: not found: ${missing.join(', ')}`);
+        const url = await page.evaluate((tt) => window.kinsburgReel.captureFrame(tt, 'image/jpeg', 0.9), d * f);
+        writeFileSync(join(args.stills === true ? tmp : String(args.stills), `TR-${String(i).padStart(2, '0')}-${sc.key}-${Math.round(f * 100)}.jpg`), Buffer.from(url.split(',')[1], 'base64'));
+      }
+      continue;
+    }
+    shots.push({ file: await film(page, tmp, `TR-${i}`, spec), at: sc.from });
+  }
+
+  // ── overlays: the shade, then each section's text ──
+  const overlays = [{ png: await png(join(tmp, 'TR-shade.png'), '<div class="tr-shade"></div>'), from: 0, to: D, noFade: true }];
+  for (const [i, sc] of sections.entries()) {
+    const x = sc.text;
+    if (i > 0 && sections[i - 1].text === x) { overlays.at(-1).to = sc.to + (i < sections.length - 1 ? 0.05 : 0); continue; }
+    let html = `<div class="tr-top">${x.kick ? `<div class="tr-kick">${esc(x.kick)}</div>` : '<div class="tr-kick">Kinsburg</div>'}<div class="tr-head">${x.head}</div>${x.sub ? `<div class="tr-sub">${esc(x.sub)}</div>` : ''}</div>`;
+    if (x.chips) html += `<div class="tr-chips">${x.chips.map((c, k) => `<i class="${k === x.on ? 'on' : ''}">${esc(c)}</i>`).join('')}</div>`;
+    if (x.card) {
+      const pct = Math.min(100, (n / FOUNDING) * 100).toFixed(1);
+      html += `<div class="tr-mid"><div class="tr-id"><div class="tr-id-top"><span>Kinsburg</span><span>Resident card</span></div>
+        <div class="tr-id-body"><div class="tr-id-pic">🏡</div><div><small>Resident</small><div class="tr-id-name">@your_name</div>
+        <div class="tr-id-grid"><div><small>House</small><b>#${next}</b></div><div><small>Since</small><b>${new Date().getUTCFullYear()}</b></div><div><small>Street</small><b>${esc(newest.name)}</b></div></div></div></div>
+        <div class="tr-id-foot"><span class="tr-id-mrz">KB&lt;&lt;YOUR&lt;NAME&lt;&lt;${String(next).padStart(4, '0')}&lt;&lt;</span><span class="tr-id-badge">Founding resident</span></div></div>
+        <div class="tr-prog"><div><i style="width:${pct}%"></i></div><span><b>${n.toLocaleString('en-US')}</b> / ${FOUNDING.toLocaleString('en-US')} founding residents</span></div></div>`;
+    }
+    if (x.list) {
+      html += `<div class="tr-mid" style="top:700px"><div class="tr-list">
+        <div class="tr-row"><em>🏠</em><div><b>House</b><span>Free · comment MOVE IN</span></div><u>#${next} open</u></div>
+        <div class="tr-row"><em>🏝️</em><div><b>Villa</b><span>Free for the first 100 · comment VILLA</span></div><u class="gold">${left.villa} left</u></div>
+        <div class="tr-row"><em>🏙️</em><div><b>Skyscraper</b><span>Free for the first 100 · comment SKYSCRAPER</span></div><u class="gold">${left.skyscraper} left</u></div>
+        <div class="tr-row"><em>💬</em><div><b>Your idea</b><span>The top comment gets built</span></div><u class="gold">Comment</u></div>
+        </div><div class="tr-btn">Follow + comment MOVE IN</div></div>`;
+    }
+    const card = x.card || x.list;
+    overlays.push({ png: await png(join(tmp, `TR-text-${i}.png`), html), from: i === 0 ? 0 : sc.from + 0.05, to: sc.to + (i < sections.length - 1 ? 0.05 : 0), fade: i === 0 ? 0.01 : 0.18, ...(card ? { dim: true } : {}) });
+    if (sc.key === 'count') {
+      // the counter ticks from 3 to today's number while the rings light up
+      const steps = 34, dur = (sc.to - sc.from) * 0.75, seq = [];
+      for (let k = 0; k <= steps; k++) {
+        const u = k / steps, val = Math.round(3 + (n - 3) * (1 - (1 - u) ** 2));
+        seq.push({ file: await png(join(tmp, `TR-count-${k}.png`), `<div class="tr-count"><div><span>Residents so far</span><b>${val}</b></div></div>`), d: k === steps ? sc.to - sc.from - dur : dur / steps });
+      }
+      overlays.push({ seq, from: sc.from + 0.35, to: sc.to - 0.05, fade: 0.15 });
+    }
+  }
+  if (args.stills) {
+    // a quick look: each section's text over its three stills
+    const dir = args.stills === true ? tmp : String(args.stills);
+    for (const [i, sc] of sections.entries()) {
+      let j = i;
+      while (j > 0 && !overlays.some((o) => o.png?.endsWith(`TR-text-${j}.png`))) j--;
+      const text = overlays.find((o) => o.png?.endsWith(`TR-text-${j}.png`)).png;
+      for (const f of [5, 50, 95]) {
+        const still = join(dir, `TR-${String(i).padStart(2, '0')}-${sc.key}-${f}.jpg`);
+        await run(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', still, '-i', overlays[0].png, '-i', text, '-filter_complex', '[0][1]overlay[a];[a][2]overlay', '-q:v', '3', still.replace('.jpg', '-text.jpg')]);
+      }
+    }
+    log(`stills in ${dir}`);
+    return;
+  }
+
+  const music = MUSIC ? writeMusic(join(tmp, 'TR-music.wav'), { bars: total, dropBar: Math.round(hookBars) }) : { file: join(tmp, 'TR-silence.wav') };
+  if (!MUSIC) await run(FFMPEG, ['-hide_banner', '-y', '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo`, '-t', D.toFixed(3), music.file]);
+  const streetList = tourStreets.map((s) => s.name).join(', ');
+  await finish(tmp, 'TR', {
+    xf, shots, overlays, voice: v, duration: D, music: music.file, musicVolume: 1, rewriteCaption: true,
+    caption: `Every follower who comments MOVE IN gets a house in this city. 🏡\n\nKinsburg started with 3 people. Now ${n} live here, every one of them a real person on Instagram with their name on their own home. Today's tour: ${streetList}.\n\n🏠 Houses: free, house #${next} is open\n🏝️ Villas: free for the first 100, ${left.villa} left (comment VILLA)\n🏙️ Skyscrapers: free for the first 100, ${left.skyscraper} left (comment SKYSCRAPER)\n${builds.length ? `🏗️ Built because you asked: ${builds.filter((b) => !b.city).map((b) => `${b.emoji} ${b.label} (@${b.by})`).join(', ')}\n` : ''}\nComing soon: your own Kinsburg resident card. The first ${FOUNDING.toLocaleString('en-US')} residents become Founding Residents.\n\n👉 Follow and comment MOVE IN to get your house.\n💬 Comment what we should build next. The top comment gets built.\n\nKinsburg is a community city project. Houses are virtual and free.\n\n#kinsburg #citybuilder #virtualcity #isometric #cozygames #buildwithme`,
+    coverBg: await thumbStill(page, tmp, 'TR', { target: hookF.target, zoom: hookF.zoom, y: 0.74, hour: 20.6, labels: R.filter((r) => onScreen(r.id, { ...hookF, y: 0.74 }, 1, 1180)).slice(0, 12).map((r) => tag(r, -1, 2)) }),
+    coverHtml: `<div class="tr-shade" style="height:1100px"></div><div style="position:absolute;left:60px;right:60px;top:${THUMB.top}px;text-align:center;color:${C.white};font-weight:900;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 34px rgba(11,20,48,.6)">
+  <div style="font-size:108px;line-height:1">Every follower</div>
+  <div style="font-size:150px;line-height:1;color:${C.gold};letter-spacing:-.025em;margin:14px 0 18px;white-space:nowrap">gets a house</div>
+  <div style="display:inline-block;background:${C.gold};color:${C.ink};border-radius:999px;padding:14px 40px;font-size:60px;text-shadow:none">comment MOVE IN</div></div>`,
+  });
+  return { streets: tourStreets.map((s) => s.name), villasLeft: left.villa, skysLeft: left.skyscraper };
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), 'kinsburg-launch-'));
 try {
@@ -1108,7 +1422,7 @@ try {
   };
   const right = `${R.length.toLocaleString('en-US')} residents`;
   log(`${R.length} residents${demo ? ' (sample residents: re-run with --url after launch)' : ''}`);
-  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1], ['L1', reelL1], ['T2', reelT2], ['T3', reelT3], ['E', reelE]]) {
+  for (const [id, make] of [['A', reelA], ['B', reelB], ['C', reelC], ['D', reelD], ['T1', reelT1], ['L1', reelL1], ['T2', reelT2], ['T3', reelT3], ['E', reelE], ['TR', reelTour]]) {
     if (ONLY ? ONLY !== id : !['A', 'B', 'C'].includes(id)) continue; // D and the series only on request
     const t0 = Date.now();
     await make({ tmp, page, R, right, cardOf });

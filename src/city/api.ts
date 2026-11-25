@@ -128,8 +128,8 @@ export interface ReelControl {
   resident(id: string): ReelTarget | null;
   /** The empty building lot closest to a resident's home (for "this lot is waiting" shots). */
   emptyLotNear(id: string): ReelTarget | null;
-  /** the empty plot the next resident will get */
-  nextLot(): ReelTarget | null;
+  /** the empty plot the k-th next resident gets (0 = the next one) */
+  nextLot(k?: number): ReelTarget | null;
   /** Where a landmark is (by Landmark.kind, e.g. 'townhall'), or null. */
   landmark(kind: string): ReelTarget | null;
   /** A build by id, or the highest id with 'latest'; null if there is none or it has no site. */
