@@ -292,6 +292,9 @@ try {
   j = await (await admin('/admin/reply-queue/flush', {})).json();
   qs = await (await admin('/admin/reply-queue')).json();
   ok(j.sent === 0 && qs.replies.find((x) => x.comment_id === '9990007')?.status === 'queued' && queuedSent.length === 5, 'during a comment block queued replies wait (nothing is lost)', { j, queuedSent: queuedSent.length });
+  j = await (await admin('/admin/reply', { commentId: '9990001', message: 'Update: you are our Lawyer now ⚖️', queue: true, followUp: true })).json();
+  qs = await (await admin('/admin/reply-queue')).json();
+  ok(j.queued === true && qs.replies.some((x) => x.comment_id === '9990001~1' && x.status === 'queued') && qs.replies.find((x) => x.comment_id === '9990001')?.status === 'sent', 'a follow-up reply can be queued under a comment that already had one', qs.replies.map((x) => x.comment_id));
 
 
   console.log('\ntown: votes, mayor, growing houses');

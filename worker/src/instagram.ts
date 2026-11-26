@@ -723,10 +723,17 @@ export async function queueReply(env: Env, body: any) {
   const commentId = String(body?.commentId ?? '');
   const message = String(body?.message ?? '').trim();
   if (!/^\d{5,30}$/.test(commentId) || !message || message.length > 500) return { error: 'need commentId (digits) and message (1-500 chars)' };
+  // followUp: true adds another reply under a comment that already had one ("Update: you're our
+  // Lawyer now"). Stored as "<comment id>~<n>"; the part before "~" is what gets replied to.
+  let key = commentId;
+  if (body?.followUp) {
+    const n = await env.DB.prepare(`SELECT COUNT(*) AS n FROM reply_queue WHERE comment_id = ?1 OR comment_id LIKE ?1 || '~%'`).bind(commentId).first<{ n: number }>();
+    key = `${commentId}~${n?.n ?? 0}`;
+  }
   await env.DB.prepare(
     `INSERT INTO reply_queue (comment_id, handle, message) VALUES (?1, ?2, ?3)
      ON CONFLICT(comment_id) DO UPDATE SET message = excluded.message, handle = excluded.handle WHERE reply_queue.status = 'queued'`,
-  ).bind(commentId, body?.handle ? String(body.handle).slice(0, 40) : null, message).run();
+  ).bind(key, body?.handle ? String(body.handle).slice(0, 40) : null, message).run();
   const waiting = await env.DB.prepare(`SELECT COUNT(*) AS n FROM reply_queue WHERE status = 'queued'`).first<{ n: number }>();
   return { queued: true, waiting: waiting?.n ?? 0, pace: await replyStatus(env) };
 }
@@ -757,10 +764,11 @@ export async function flushReplyQueue(env: Env) {
   for (const r of next) {
     try {
       if (sent) await humanPause();
-      await ig.post(`${r.comment_id}/replies`, { message: r.message });
+      const cid = r.comment_id.split('~')[0]; // follow-ups are stored as "<comment id>~<n>"
+      await ig.post(`${cid}/replies`, { message: r.message });
       await env.DB.batch([
         env.DB.prepare(`UPDATE reply_queue SET status = 'sent', sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE comment_id = ?1`).bind(r.comment_id),
-        env.DB.prepare('UPDATE processed_comments SET replied = 1 WHERE comment_id = ?1').bind(r.comment_id),
+        env.DB.prepare('UPDATE processed_comments SET replied = 1 WHERE comment_id = ?1').bind(cid),
       ]);
       sent++;
     } catch (err) {
