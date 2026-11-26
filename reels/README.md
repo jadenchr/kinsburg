@@ -17,13 +17,13 @@ The two daily Reels take turns, by city day (the day number on kinsburg.com):
 | City day | Reel | Folder |
 |---|---|---|
 | Even (16, 18, 20…) | Money episode | `episodes/episode-NN/` |
-| Odd (15, 17, 19…) | City tour | `tour/city-tour/` (replaced each time) |
+| Odd (15, 17, 19…) | City tour | `tour/city-tour-NN/` (a new numbered tour each time) |
 
 Make either one after 12:07 UTC, when the day's build run has happened. The episode command refuses on a tour day, so you can't mix them up.
 
 ## City tour
 
-`tour/city-tour/` is a ~40-second tour of the live city, made like the Keystone City Reel that reached 176K views. Jadie narrates every part, and the same words appear as big on-screen text:
+Each `tour/city-tour-NN/` is a ~40-second tour of the live city, made like the Keystone City Reel that reached 176K views. Jadie narrates every part, and the same words appear as big on-screen text:
 
 1. The hook: "Every follower who comments MOVE IN gets a house in this city."
 2. The resident counter ticking up.
@@ -33,6 +33,14 @@ Make either one after 12:07 UTC, when the day's build run has happened. The epis
 6. What comments built.
 7. A thank-you over every home.
 8. An end card saying "Follow + comment MOVE IN".
+
+Every tour is different:
+
+- **Streets:** it tours two streets that earlier tours haven't covered (the biggest first), plus the newest street. While the newest street has only a few homes, it shows the last ten people to move in instead.
+- **Opening:** it opens on another street with a different hook.
+- **Counter:** it says how many people moved in since the last tour.
+
+`--tour N` re-renders tour N; leave it out to make the next one.
 
 It's voice only, with no music. Each shot lasts about as long as Jadie's line, so the pauses stay short. The numbers, street names and builds in his lines come from the live city on every render. So does the caption, so post it as it is. (The script can also make its own music track and cut on its bars: set `MUSIC = true` in `reelTour`.)
 
@@ -57,7 +65,8 @@ npm run reel:launch -- --only E --url https://kinsburg.com
 | Order | Reel | Status |
 |---|---|---|
 | Day 1 | [launch/launch-04-house-number-4-is-empty](launch/launch-04-house-number-4-is-empty) | **Posted.** The city went from 3 to 28 residents |
-| **Now** | [tour/city-tour](tour/city-tour) | **Ready, pin it.** The Keystone-style tour, from the live city |
+| **Now** | [tour/city-tour-01](tour/city-tour-01) | **Ready, pin it.** The first Keystone-style tour (130 residents) |
+| **Next** | [tour/city-tour-02](tour/city-tour-02) | **Ready.** Tour 2: Fletcher Hill, Oakapple Way and the newest neighbours, 159 residents, the Christmas city |
 | **Next** | [in-this-town/in-this-town-03-the-update](in-this-town/in-this-town-03-the-update) | **Ready.** Pets, jobs, RESPOND and coins, besties, secret spots. No exact numbers, so it doesn't go stale |
 | Day 2 | [in-this-town/in-this-town-01-rules-of-kinsburg](in-this-town/in-this-town-01-rules-of-kinsburg) | **Ready.** Re-rendered from the live city with @jadiedevs as resident #4 |
 | Day 3 | [live/live-01-lets-build-this-city](live/live-01-lets-build-this-city) | **Ready.** Jadie's voice, hover cards for @itsjadenchristy, @metabro.pov and @jadiedevs |

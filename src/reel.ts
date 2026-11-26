@@ -59,7 +59,7 @@ export interface KinsburgReel {
   /** a resident card PNG (data URL), optionally with fields overridden (for launch reels) */
   card(id: string, overrides?: Partial<Resident>): Promise<string>;
   /** scripted camera for the launch reels; returns targets it couldn't find */
-  setScript(s: { duration: number; keys: { t: number; target: string; zoom?: number; y?: number }[]; hours?: { t: number; h: number }[]; dark?: { id: string; until: number }[]; rings?: { id: string; from: number; to?: number }[]; labels?: ReelLabel[]; actors?: ReelActor[]; ease?: 'cubic' | 'sine' }): string[];
+  setScript(s: { duration: number; keys: { t: number; target: string; zoom?: number; y?: number }[]; hours?: { t: number; h: number }[]; dark?: { id: string; until: number }[]; rings?: { id: string; from: number; to?: number }[]; labels?: ReelLabel[]; actors?: ReelActor[]; ease?: 'cubic' | 'sine'; newcomerTags?: boolean }): string[];
   /** world position of anything the camera can aim at (a resident's home, build:<id>, open:<k>, landmark:<kind>) */
   where(id: string): { x: number; y: number } | null;
   /** every resident with their address, for choosing who to feature */
@@ -478,7 +478,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
 
   const canvas = document.getElementById('city') as HTMLCanvasElement;
   // ── scripted camera (launch reels): set with window.kinsburgReel.setScript() ──
-  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[]; labels: ReelLabel[]; lifts?: number[]; actors: { id: string; keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1; pet?: CompanionPet | null }[]; talk: { from: number; to: number }[]; clock: number }[]; ease: 'cubic' | 'sine' } | null = null;
+  let script: { duration: number; cams: { t: number; cam: ReelCamera }[]; hours: { t: number; h: number }[]; dark: { id: string; until: number }[]; rings: { id: string; from: number; to: number }[]; labels: ReelLabel[]; newcomerTags: boolean; lifts?: number[]; actors: { id: string; keys: { t: number; x: number; y: number; pose: JadiePose; face?: 1 | -1; pet?: CompanionPet | null }[]; talk: { from: number; to: number }[]; clock: number }[]; ease: 'cubic' | 'sine' } | null = null;
   const resolveTarget = (spec: string): ReelTarget | null => {
     const id = normalise(spec);
     if (id === 'wide') return null;
@@ -551,6 +551,7 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
         camera,
         highlights: script.rings.filter((r) => tt >= r.from && tt <= r.to).map((r) => r.id),
         dark: script.dark.filter((d) => tt < d.until).map((d) => d.id),
+        noNewcomerTags: !script.newcomerTags,
       });
       for (const a of script.actors) {
         const p = actorAt(a, tt);
@@ -641,6 +642,8 @@ export function startReel(city: CityView, data: CityData, params: URLSearchParam
         dark: (s.dark ?? []).map((d) => ({ id: normalise(d.id), until: d.until })),
         rings: (s.rings ?? []).map((r) => ({ id: normalise(r.id), from: r.from, to: r.to ?? 1e9 })),
         labels: (s.labels ?? []).map((l) => ({ ...l, id: normalise(l.id) })),
+        // the map's own newcomer tags: kept unless the reel draws its own name tags or turns them off
+        newcomerTags: s.newcomerTags ?? !(s.labels ?? []).length,
         actors,
         ease: s.ease ?? 'cubic',
       };

@@ -34,7 +34,7 @@ const FOLDER = {
   A: 'launch/launch-01-yours-is-still-dark', B: 'launch/launch-02-comment-two-words', C: 'launch/launch-03-the-city-picks-your-job',
   D: 'launch/launch-04-house-number-4-is-empty', T1: 'in-this-town/in-this-town-01-rules-of-kinsburg', L1: 'live/live-01-lets-build-this-city',
   T2: 'in-this-town/in-this-town-02-six-seven', T3: 'in-this-town/in-this-town-03-the-update',
-  TR: 'tour/city-tour',
+  // TR (city tours) picks its own folder: tour/city-tour-NN
   // E (daily episodes) picks its own folder: episodes/episode-NN
 };
 const ONLY = args.only ? String(args.only).toUpperCase() : null;
@@ -1151,9 +1151,26 @@ async function reelE({ tmp, page, R }) {
 // its open lots), the free villas and skyscrapers left, the resident card that's coming, what comments
 // built, a thank-you over every home, and an end card. Every cut lands on a bar of the music.
 //   npm run reel:launch -- --only TR --url https://kinsburg.com        (add --stills for a quick look)
+// Tours are a numbered series (reels/tour/city-tour-NN): each one tours two different streets (the
+// biggest first, then the next two…), opens on another street with its own hook, and says how many
+// people have moved in since the last tour. --tour N re-renders tour N; by default it's the next one.
+const TOUR_HOOKS = [
+  { head: 'Every follower gets a <b>house</b> in this city.', text: 'Every follower who comments MOVE IN gets a house in this city.', say: 'Every follower who comments, move in, gets a house in this city.', caption: 'Every follower who comments MOVE IN gets a house in this city. 🏡', cover: ['Every follower', 'gets a house'] },
+  { head: 'One of these houses has <b>your name</b> on it.', text: 'Comment MOVE IN, and one of these houses has your name on it.', say: 'Comment, move in, and one of these houses has your name on it.', caption: 'Comment MOVE IN and one of these houses has your name on it. 🏡', cover: ['One of these is', 'your house'] },
+  { head: 'This city is built by <b>its followers</b>.', text: 'This whole city is built by its followers. Every house is a real person.', say: 'This whole city is built by its followers. Every house is a real person.', caption: 'This whole city is built by its followers. Every house is a real person. 🏡', cover: ['Built by', 'its followers'] },
+];
 async function reelTour({ tmp, page, R }) {
   const town = await page.evaluate(() => fetch('/api/city/town.json').then((r) => r.json()));
   const n = R.length, next = n + 1;
+  const tourDir = (k) => join(OUT, 'tour', `city-tour-${String(k).padStart(2, '0')}`);
+  let T = Number(args.tour) || 0;
+  if (!T) { T = 1; while (existsSync(tourDir(T))) T++; }
+  const TT = String(T).padStart(2, '0');
+  const hook = TOUR_HOOKS[(T - 1) % TOUR_HOOKS.length];
+  // residents at the last tour, from its caption ("Now 130 live here")
+  const prevCap = T > 1 ? join(tourDir(T - 1), `kinsburg-city-tour-${String(T - 1).padStart(2, '0')}.txt`) : null;
+  const before = prevCap && existsSync(prevCap) ? Number(readFileSync(prevCap, 'utf8').match(/Now (\d+) live here/)?.[1]) || null : null;
+  const grew = before && n - before >= 2 ? n - before : 0;
   const homes = town?.homes ?? { villa: { limit: 100, taken: 0 }, skyscraper: { limit: 100, taken: 0 } };
   const left = { villa: homes.villa.limit - homes.villa.taken, skyscraper: homes.skyscraper.limit - homes.skyscraper.taken };
   const FOUNDING = 1000;
@@ -1165,9 +1182,17 @@ async function reelTour({ tmp, page, R }) {
   for (const r of byNum) if (streetOf(r)) (groups.get(streetOf(r)) ?? groups.set(streetOf(r), []).get(streetOf(r))).push(r);
   const streets = [...groups].map(([name, rs]) => ({ name, rs, lo: rs[0].number, hi: rs.at(-1).number })).sort((a, b) => a.lo - b.lo);
   const founders = streets[0];
-  const newest = streets.find((s) => s.rs.some((r) => r.number === byNum.at(-1).number));
-  const middle = [...streets.filter((s) => s !== founders && s !== newest)].sort((a, b) => b.rs.length - a.rs.length);
-  const tourStreets = [middle.find((s) => s.lo < (newest?.lo ?? Infinity) / 2) ?? middle[0], middle.find((s) => s.lo > (newest?.lo ?? 0) / 2) ?? middle[1], newest].filter(Boolean);
+  const newestStreet = streets.find((s) => s.rs.some((r) => r.number === byNum.at(-1).number));
+  // the newest street, or (while it has only a few homes) the last ten people to move in, wherever they live
+  const lastTen = byNum.slice(-10);
+  const newest = newestStreet && newestStreet.rs.length >= 6 ? newestStreet
+    : { name: 'Newest neighbours', chip: 'Newest', rs: lastTen, lo: lastTen[0].number, hi: lastTen.at(-1).number, group: true };
+  // the biggest streets two at a time: tour 1 the two biggest, tour 2 the next two, and round again
+  const middle = [...streets.filter((s) => s !== founders && s !== newest && s !== newestStreet)].sort((a, b) => b.rs.length - a.rs.length || a.lo - b.lo);
+  const pick = (k) => middle[k % Math.max(1, middle.length)];
+  const tourStreets = [...new Set([pick(2 * (T - 1)), pick(2 * (T - 1) + 1)])].filter(Boolean).sort((a, b) => a.lo - b.lo).concat(newest ? [newest] : []);
+  // the hook opens on the founders' street the first time, then on the street after this tour's two
+  const hookStreet = T === 1 ? founders : [pick(2 * (T - 1) + 2), founders].find((s) => s && !tourStreets.includes(s)) ?? founders;
   const villas = byNum.filter((r) => r.home === 'villa'), skys = byNum.filter((r) => r.home === 'skyscraper');
   const builds = (town?.builds ?? []).map((b) => ({ ...b, id: `build:${b.id}`, label: kindLabel(b.kind), emoji: kindEmoji(b.kind), city: b.by === (town.account ?? 'kinsburgtown') }));
   const OPEN = [0, 1, 2, 3, 4, 5].map((k) => `open:${k}`);
@@ -1200,32 +1225,38 @@ async function reelTour({ tmp, page, R }) {
   // each section: its shortest length in bars, the shot, the on-screen text, and what Jadie says over it
   const S = (key, bars, build, text, line) => sections.push({ key, bars, build, text, line });
   const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
-  const hookF = frame(founders.rs.map((r) => r.id), { frac: 0.95, min: 1.6, max: 2.8, y: 0.7 });
+  const hookF = frame(hookStreet.rs.map((r) => r.id), { frac: 0.95, min: 1.6, max: 2.8, y: 0.7 });
   // homes in the first frame wear their name tags from frame one (it's also where the loop lands); the
   // ones nearest the middle, so the stacked tags stay under the headline
   const hookTags = R.filter((r) => onScreen(r.id, hookF, 1.1, 900)).sort((a, b) => Math.abs(screen(a.id, hookF).x - W / 2) - Math.abs(screen(b.id, hookF).x - W / 2)).slice(0, 16);
   S('hook', 2, (d) => ({ keys: drift(hookF, d, 1.1), labels: hookTags.map((r) => tag(r, -1, d + 1)) }),
-    { kick: 'Kinsburg · city tour', head: 'Every follower gets a <b>house</b> in this city.', sub: 'Follow + comment MOVE IN' },
-    { text: 'Every follower who comments MOVE IN gets a house in this city.', say: 'Every follower who comments, move in, gets a house in this city.' });
+    { kick: `Kinsburg · city tour · ${T}`, head: hook.head, sub: 'Follow + comment MOVE IN' },
+    { text: hook.text, say: hook.say });
   S('count', 2, (d) => ({
     keys: [{ t: 0, target: hookF.target, zoom: hookF.zoom * 1.1, y: hookF.y }, { t: d * 0.7, target: all.target, zoom: all.zoom, y: all.y }, { t: d, target: all.target, zoom: all.zoom * 1.03, y: all.y }],
     rings: byNum.map((r, i) => ({ id: r.id, from: 0.35 + (i / n) * (d * 0.75) })),
-  }), { head: `It started with 3 people.<br>Now <b>${n}</b> live here.`, sub: 'and it’s growing every day' },
-    { text: `It started with 3 people. Now ${n} people live in this city.`, say: `It started with three people. Now, ${sayNumber(n)} people live in this city.` });
+  }), grew
+    ? { head: `Last tour: ${before} people.<br>Today: <b>${n}</b>.`, sub: `${grew} new neighbours since then` }
+    : { head: `It started with 3 people.<br>Now <b>${n}</b> live here.`, sub: 'and it’s growing every day' },
+  grew
+    ? { text: `Last tour, ${before} people lived here. Today, ${n}.`, say: `Last tour, ${sayNumber(before)} people lived here. Today, ${sayNumber(n)}.` }
+    : { text: `It started with 3 people. Now ${n} people live in this city.`, say: `It started with three people. Now, ${sayNumber(n)} people live in this city.` });
   for (const [i, st] of tourStreets.entries()) {
     const isNew = st === newest;
     const f = frame([...st.rs.map((r) => r.id), ...(isNew ? OPEN.slice(0, 3) : [])], { frac: 0.86, min: 1.0, max: 2.6 });
+    if (args.debug) log(`${st.name}: ${st.rs.length} residents, ${st.rs.filter((r) => onScreen(r.id, f, 1.08, 640)).length} tagged; zoom ${f.zoom.toFixed(2)}; ${st.rs.map((r) => { const q = screen(r.id, f, 1.08); return `#${r.number}@${q ? `${q.x | 0},${q.y | 0}` : '?'}`; }).join(' ')}`);
     S(`street${i}`, 2, (d) => ({
       keys: drift(f, d),
-      labels: [...st.rs.filter((r) => onScreen(r.id, f, 1.08)).map((r) => tag(r, 0.15, d + 1)),
+      labels: [...st.rs.filter((r) => onScreen(r.id, f, 1.08, 640)).map((r) => tag(r, 0.15, d + 1)),
         ...(isNew ? OPEN.filter((id) => onScreen(id, f, 1.08)).map((id, k) => ({ id, num: `#${next + Number(id.slice(5))}`, text: 'OPEN', from: 0.6 + k * 0.15, to: d + 1 })) : [])],
       rings: isNew ? OPEN.filter((id) => onScreen(id, f, 1.08)).map((id, k) => ({ id, from: 0.6 + k * 0.15 })) : [],
     }), {
       head: `<b>${esc(st.name)}</b>`,
-      sub: isNew ? `The newest street · house #${next} is open` : `${st.rs.length} residents, from #${st.lo} to #${st.hi} · all moved in`,
-      chips: tourStreets.map((s) => s.name), on: i,
+      sub: isNew ? (st.group ? `#${st.lo} to #${st.hi} · house #${next} is open` : `The newest street · house #${next} is open`) : `${st.rs.length} residents, from #${st.lo} to #${st.hi} · all moved in`,
+      chips: tourStreets.map((s) => s.chip ?? s.name), on: i,
     }, isNew
-      ? { text: `And ${st.name}, our newest street. House #${next} is still open.`, say: `And ${st.name}, our newest street. House number ${sayNumber(next)} is still open.` }
+      ? (st.group ? { text: `And our newest neighbours. House #${next} is still open.`, say: `And our newest neighbours. House number ${sayNumber(next)} is still open.` }
+        : { text: `And ${st.name}, our newest street. House #${next} is still open.`, say: `And ${st.name}, our newest street. House number ${sayNumber(next)} is still open.` })
       : i === 0 ? { text: `This is ${st.name}. ${st.rs.length} neighbours, every house taken.`, say: `This is ${st.name}. ${cap(sayNumber(st.rs.length))} neighbours, every house taken.` }
       : { text: `${st.name}. ${st.rs.length} more.`, say: `${st.name}. ${cap(sayNumber(st.rs.length))} more.` });
   }
@@ -1327,7 +1358,7 @@ async function reelTour({ tmp, page, R }) {
   const shots = [];
   for (const [i, sc] of sections.entries()) {
     const d = sc.to - sc.from + (i < sections.length - 1 ? xf : 0);
-    const spec = { duration: d, ease: 'sine', hours: [{ t: 0, h: args.hour ? Number(args.hour) : 20.6 }], ...sc.build(d) };
+    const spec = { duration: d, ease: 'sine', newcomerTags: false, hours: [{ t: 0, h: args.hour ? Number(args.hour) : 20.6 }], ...sc.build(d) };
     if (args.stills) {
       for (const f of [0.05, 0.5, 0.95]) {
         const missing = await page.evaluate((s) => window.kinsburgReel.setScript(s), spec);
@@ -1351,7 +1382,7 @@ async function reelTour({ tmp, page, R }) {
       const pct = Math.min(100, (n / FOUNDING) * 100).toFixed(1);
       html += `<div class="tr-mid"><div class="tr-id"><div class="tr-id-top"><span>Kinsburg</span><span>Resident card</span></div>
         <div class="tr-id-body"><div class="tr-id-pic">🏡</div><div><small>Resident</small><div class="tr-id-name">@your_name</div>
-        <div class="tr-id-grid"><div><small>House</small><b>#${next}</b></div><div><small>Since</small><b>${new Date().getUTCFullYear()}</b></div><div><small>Street</small><b>${esc(newest.name)}</b></div></div></div></div>
+        <div class="tr-id-grid"><div><small>House</small><b>#${next}</b></div><div><small>Since</small><b>${new Date().getUTCFullYear()}</b></div><div><small>Street</small><b>${esc(newest.group ? newestStreet?.name ?? streetOf(byNum.at(-1)) : newest.name)}</b></div></div></div></div>
         <div class="tr-id-foot"><span class="tr-id-mrz">KB&lt;&lt;YOUR&lt;NAME&lt;&lt;${String(next).padStart(4, '0')}&lt;&lt;</span><span class="tr-id-badge">Founding resident</span></div></div>
         <div class="tr-prog"><div><i style="width:${pct}%"></i></div><span><b>${n.toLocaleString('en-US')}</b> / ${FOUNDING.toLocaleString('en-US')} founding residents</span></div></div>`;
     }
@@ -1393,14 +1424,15 @@ async function reelTour({ tmp, page, R }) {
 
   const music = MUSIC ? writeMusic(join(tmp, 'TR-music.wav'), { bars: total, dropBar: Math.round(hookBars) }) : { file: join(tmp, 'TR-silence.wav') };
   if (!MUSIC) await run(FFMPEG, ['-hide_banner', '-y', '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo`, '-t', D.toFixed(3), music.file]);
-  const streetList = tourStreets.map((s) => s.name).join(', ');
+  const streetList = tourStreets.map((s) => (s.group ? 'our newest neighbours' : s.name)).join(', ');
   await finish(tmp, 'TR', {
+    folder: `tour/city-tour-${TT}`,
     xf, shots, overlays, voice: v, duration: D, music: music.file, musicVolume: 1, rewriteCaption: true,
-    caption: `Every follower who comments MOVE IN gets a house in this city. 🏡\n\nKinsburg started with 3 people. Now ${n} live here, every one of them a real person on Instagram with their name on their own home. Today's tour: ${streetList}.\n\n🏠 Houses: free, house #${next} is open\n🏝️ Villas: free for the first 100, ${left.villa} left (comment VILLA)\n🏙️ Skyscrapers: free for the first 100, ${left.skyscraper} left (comment SKYSCRAPER)\n${builds.length ? `🏗️ Built because you asked: ${builds.filter((b) => !b.city).map((b) => `${b.emoji} ${b.label} (@${b.by})`).join(', ')}\n` : ''}\nComing soon: your own Kinsburg resident card. The first ${FOUNDING.toLocaleString('en-US')} residents become Founding Residents.\n\n👉 Follow and comment MOVE IN to get your house.\n💬 Comment what we should build next. The top comment gets built.\n\nKinsburg is a community city project. Houses are virtual and free.\n\n#kinsburg #citybuilder #virtualcity #isometric #cozygames #buildwithme`,
+    caption: `${hook.caption}\n\nKinsburg City Tour #${T}. ${grew ? `${grew} people moved in since the last tour. ` : 'Kinsburg started with 3 people. '}Now ${n} live here, every one of them a real person on Instagram with their name on their own home. Today's tour: ${streetList}.\n\n🏠 Houses: free, house #${next} is open\n🏝️ Villas: free for the first 100, ${left.villa} left (comment VILLA)\n🏙️ Skyscrapers: free for the first 100, ${left.skyscraper} left (comment SKYSCRAPER)\n${builds.length ? `🏗️ Built because you asked: ${builds.filter((b) => !b.city).map((b) => `${b.emoji} ${b.label} (@${b.by})`).join(', ')}\n` : ''}\nComing soon: your own Kinsburg resident card. The first ${FOUNDING.toLocaleString('en-US')} residents become Founding Residents.\n\n👉 Follow and comment MOVE IN to get your house.\n💬 Comment what we should build next. The top comment gets built.\n\nKinsburg is a community city project. Houses are virtual and free.\n\n#kinsburg #citybuilder #virtualcity #isometric #cozygames #buildwithme`,
     coverBg: await thumbStill(page, tmp, 'TR', { target: hookF.target, zoom: hookF.zoom, y: 0.74, hour: 20.6, labels: R.filter((r) => onScreen(r.id, { ...hookF, y: 0.74 }, 1, 1180)).slice(0, 12).map((r) => tag(r, -1, 2)) }),
     coverHtml: `<div class="tr-shade" style="height:1100px"></div><div style="position:absolute;left:60px;right:60px;top:${THUMB.top}px;text-align:center;color:${C.white};font-weight:900;text-shadow:0 4px 0 rgba(11,20,48,.55),0 10px 34px rgba(11,20,48,.6)">
-  <div style="font-size:108px;line-height:1">Every follower</div>
-  <div style="font-size:150px;line-height:1;color:${C.gold};letter-spacing:-.025em;margin:14px 0 18px;white-space:nowrap">gets a house</div>
+  <div style="font-size:108px;line-height:1">${esc(hook.cover[0])}</div>
+  <div style="font-size:150px;line-height:1;color:${C.gold};letter-spacing:-.025em;margin:14px 0 18px;white-space:nowrap">${esc(hook.cover[1])}</div>
   <div style="display:inline-block;background:${C.gold};color:${C.ink};border-radius:999px;padding:14px 40px;font-size:60px;text-shadow:none">comment MOVE IN</div></div>`,
   });
   return { streets: tourStreets.map((s) => s.name), villasLeft: left.villa, skysLeft: left.skyscraper };

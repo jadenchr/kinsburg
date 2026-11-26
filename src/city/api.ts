@@ -111,6 +111,8 @@ export interface ReelFrame {
   highlights: string[];
   /** resident ids drawn with every light off (an empty-looking home at night) */
   dark?: string[];
+  /** leave out the map's own "@handle" tags over newcomers (the reel draws its own name tags) */
+  noNewcomerTags?: boolean;
 }
 
 export interface ReelTarget {

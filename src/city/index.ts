@@ -58,6 +58,7 @@ export const createCityView: CreateCityView = (canvas) => {
   const cam = new Camera();
   const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   let reelMode = false;
+  let hideNewcomers = false; // a scripted reel with its own name tags
   let billboards: Billboard[] = [];
   const sim = createSimOverlay();
   const politics = createPoliticsOverlay();
@@ -393,7 +394,7 @@ export const createCityView: CreateCityView = (canvas) => {
       };
       sim.draw(ctx, sky, t, S, v, opts);
       politics.draw(ctx, sky, t, S, v, opts);
-      newcomers.draw(ctx, sky, t, S, v, opts);
+      if (!hideNewcomers) newcomers.draw(ctx, sky, t, S, v, opts);
     }
     for (const i of rings) drawHighlight(m.objs[i], ringMs, S);
     if (christmasOn() && !reduced()) {
@@ -922,6 +923,7 @@ export const createCityView: CreateCityView = (canvas) => {
         cam.y = f.camera.y;
         cam.zoom = f.camera.zoom;
         cam.rev++;
+        hideNewcomers = !!f.noNewcomerTags;
         const rings: number[] = [];
         for (const id of f.highlights) {
           // 'lot:<resident>' rings the empty plot nearest that resident (the next house to come)
