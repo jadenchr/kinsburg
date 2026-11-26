@@ -17,7 +17,7 @@ import {
 import { clampStat } from '../../shared/sim.mjs';
 import { checkHandle, eventStmt } from './city';
 import { type Env, json, log } from './env';
-import { IgClient, getToken, isCommentBlock, noteReplies, pauseReplies, replyAllowance, type IgComment } from './instagram';
+import { IgClient, commentRefused, getToken, isCommentBlock, noteReplies, replyAllowance, type IgComment } from './instagram';
 import { getState, putState } from './sim';
 import { closePoll, type Mayor } from './town';
 
@@ -216,7 +216,7 @@ export async function flushAnnouncements(env: Env, now = Date.now()) {
     return { posted: 1, id: next.id };
   } catch (err) {
     log('announce_failed', { id: next.id, error: String(err) });
-    if (isCommentBlock(err)) await pauseReplies(env, err);
+    if (isCommentBlock(err)) await commentRefused(env, 'post:latest', err);
     else await db.prepare(`UPDATE announcements SET status = 'failed', detail = ?2 WHERE id = ?1`).bind(next.id, String(err).slice(0, 300)).run();
     return { posted: 0, reason: 'error' };
   }

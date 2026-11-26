@@ -176,6 +176,7 @@ export async function processComments(env: Env, comments: IgComment[], source: J
   // Optional public reply, only to people who just got a house (never twice: the processed record
   // and the "joined" status both gate it).
   const replied = new Set<string>();
+  const refused = new Set<string>(); // Instagram won't take a reply on these (see commentRefused)
   const replyOn = env.IG_REPLY_ENABLED === 'true' && client;
   let replyBudget = replyOn ? await replyAllowance(env) : 0;
   for (let i = 0; i < fresh.length; i++) {
@@ -200,7 +201,10 @@ export async function processComments(env: Env, comments: IgComment[], source: J
       } catch (err) {
         report.replyErrors++;
         log('reply_failed', { comment: fresh[i].id, error: String(err) });
-        if (isCommentBlock(err)) { await pauseReplies(env, err); replyBudget = 0; }
+        if (isCommentBlock(err)) {
+          if ((await commentRefused(env, fresh[i].id, err)) === 'paused') replyBudget = 0;
+          else refused.add(fresh[i].id);
+        }
       }
     }
     // Comments that didn't get a reply now are picked up later by replyToMissed.
@@ -209,13 +213,13 @@ export async function processComments(env: Env, comments: IgComment[], source: J
   const extra: D1PreparedStatement[] = fresh.map((c, i) =>
     db
       .prepare('INSERT INTO processed_comments (comment_id, media_id, handle, result, replied) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(comment_id) DO NOTHING')
-      .bind(c.id, c.mediaId, results[i].handle, results[i].status, replied.has(c.id) ? 1 : 0),
+      .bind(c.id, c.mediaId, results[i].handle, results[i].status, replied.has(c.id) ? 1 : refused.has(c.id) ? -1 : 0),
   );
   for (const r of results) if (r.status === 'joined') extra.push(eventStmt(env, 'join', r.handle, { source, number: r.number }));
   report.besties = bestieReport;
   const rows = results.filter((r) => r.status === 'joined' && r.row).map((r) => r.row!);
   await writeSnapshots(env, [...rows, ...holdRows], extra);
-  if (report.replies) await noteReplies(env, report.replies);
+  if (report.replies + refused.size) await noteReplies(env, report.replies + refused.size);
   return report;
 }
 
@@ -231,9 +235,14 @@ export async function pollComments(env: Env) {
   const errors: string[] = [];
   const comments: IgComment[] = [];
   let media: Array<{ id: string }> = [];
+  let mediaTotal = 0;
   try {
-    const res = await ig.get(`${env.IG_USER_ID}/media`, { fields: 'id,timestamp', limit: String(intVar(env.IG_MEDIA_LIMIT, 10)) });
-    media = Array.isArray(res?.data) ? res.data : [];
+    // Every Reel, not just the newest: the newest IG_MEDIA_LIMIT posts on every scan, plus a rotating
+    // batch of the same size from the older ones (all of them are covered within a few scans)
+    const res = await ig.get(`${env.IG_USER_ID}/media`, { fields: 'id,timestamp', limit: String(intVar(env.IG_MEDIA_SCAN_MAX, 100)) });
+    const all: Array<{ id: string }> = Array.isArray(res?.data) ? res.data : [];
+    mediaTotal = all.length;
+    media = await scanSlice(env, all);
   } catch (err) {
     log('poll_failed', { stage: 'media', error: String(err) });
     await env.DB.batch([eventStmt(env, 'poll_failed', null, { stage: 'media', error: String(err) })]);
@@ -272,7 +281,7 @@ export async function pollComments(env: Env) {
   const follows = await recordFollowers(env, ig);
   const closed = await closeDuePolls(env);
   const healed = await healSnapshots(env);
-  const summary = { media: media.length, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, politics, homes, follows, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
+  const summary = { media: media.length, mediaTotal, comments: comments.length, fetches: ig.fetches, errors: errors.length, healed, town, cast: cast.cast, life, sim, politics, homes, follows, pollsClosed: closed, ...report, catchUpReplies: catchUp.replied, buildRequests: buildReqs.requests };
   log('poll_done', summary);
   if (report.fresh || errors.length) await env.DB.batch([eventStmt(env, 'poll', null, { ...summary, errors: errors.slice(0, 5) })]);
   return summary;
@@ -515,10 +524,10 @@ export async function replyToMissed(env: Env, comments: IgComment[], client: IgC
     } catch (err) {
       out.errors++;
       log('catch_up_reply_failed', { comment: row.comment_id, error: String(err) });
-      if (isCommentBlock(err)) { await pauseReplies(env, err); break; }
+      if (isCommentBlock(err) && (await commentRefused(env, row.comment_id, err)) === 'paused') break;
     }
   }
-  if (out.replied) await noteReplies(env, out.replied);
+  if (out.replied + out.errors) await noteReplies(env, out.replied + out.errors); // failed attempts count toward the pace too
   return out;
 }
 
@@ -528,7 +537,11 @@ export async function repliesAdmin(env: Env, body: any) {
   if (!token || !env.IG_USER_ID) return { error: 'Instagram not connected' };
   const ig = new IgClient(env.IG_API_BASE, token);
   const own = env.CITY_ACCOUNT.toLowerCase();
-  const media = (await ig.get(`${env.IG_USER_ID}/media`, { fields: 'id', limit: String(intVar(env.IG_MEDIA_LIMIT, 10)) })).data ?? [];
+  // { offset, count }: which posts, newest first (default the newest 10); a request may only make
+  // about 50 calls, so list all posts in batches of up to 25
+  const all = (await ig.get(`${env.IG_USER_ID}/media`, { fields: 'id', limit: String(intVar(env.IG_MEDIA_SCAN_MAX, 100)) })).data ?? [];
+  const offset = Math.max(0, Number(body?.offset ?? 0) | 0);
+  const media = all.slice(offset, offset + Math.min(25, Math.max(1, Number(body?.count ?? intVar(env.IG_MEDIA_LIMIT, 10)) | 0)));
   const comments: IgComment[] = [];
   const perPost: Array<{ media: string; comments: number }> = [];
   for (const m of media) {
@@ -541,7 +554,7 @@ export async function repliesAdmin(env: Env, body: any) {
   const otherUnanswered = comments
     .filter((c) => c.username.toLowerCase() !== own && !c.repliedByUs && !matchesMoveIn(c.text))
     .map((c) => ({ id: c.id, username: c.username, text: c.text.slice(0, 80) }));
-  return { comments: comments.length, perPost, missed, otherUnanswered, pace: await replyStatus(env) };
+  return { posts: all.length, offset, comments: comments.length, perPost, missed, otherUnanswered, pace: await replyStatus(env) };
 }
 
 // ---------------------------------------------------------------- reply pacing
@@ -636,7 +649,7 @@ export async function handReply(env: Env, body: any) {
     await env.DB.prepare('UPDATE processed_comments SET replied = 1 WHERE comment_id = ?1').bind(commentId).run();
     return { ok: true, id: r?.id ?? null };
   } catch (err) {
-    if (isCommentBlock(err)) await pauseReplies(env, err);
+    if (isCommentBlock(err)) await commentRefused(env, commentId, err);
     return { error: String((err as Error).message ?? err) };
   }
 }
@@ -682,7 +695,7 @@ export async function flushReplyQueue(env: Env) {
   const next = (await env.DB.prepare(`SELECT comment_id, message FROM reply_queue WHERE status = 'queued' ORDER BY created_at, comment_id LIMIT ?1`)
     .bind(allowance).all<{ comment_id: string; message: string }>()).results;
   const ig = new IgClient(env.IG_API_BASE, token);
-  let sent = 0;
+  let sent = 0, refusedHere = 0;
   for (const r of next) {
     try {
       if (sent) await humanPause();
@@ -695,12 +708,60 @@ export async function flushReplyQueue(env: Env) {
     } catch (err) {
       log('queued_reply_failed', { comment: r.comment_id, error: String(err) });
       if (isCommentBlock(err)) {
-        await pauseReplies(env, err);
-        break; // stays queued: it goes out after the pause
+        // one comment that can't take a reply is skipped; two different ones in a row pause everything
+        if ((await commentRefused(env, r.comment_id, err)) === 'paused') break;
+        refusedHere++; // a refused attempt still counts toward the pace
+        continue;
       }
       await env.DB.prepare(`UPDATE reply_queue SET status = 'failed', detail = ?2 WHERE comment_id = ?1`).bind(r.comment_id, String(err).slice(0, 300)).run();
     }
   }
-  if (sent) await noteReplies(env, sent);
-  return { sent };
+  if (sent + refusedHere) await noteReplies(env, sent + refusedHere);
+  return { sent, refused: refusedHere };
+}
+
+// ---------------------------------------------------------------- refused replies, scan rotation
+
+/**
+ * Instagram answered a reply with "comment not added" (code 20 / 1772107 and friends). That can mean
+ * the whole account is blocked, or only that this one comment can't take replies (the commenter
+ * restricted us, hid the comment, limits replies...). One refusal: skip this comment (it is not
+ * retried) and carry on. A different comment refused within 3 hours as well: a real account block,
+ * so both go back in line and replies pause (pauseReplies).
+ */
+export async function commentRefused(env: Env, commentId: string, err: unknown): Promise<'skipped' | 'paused'> {
+  const db = env.DB;
+  const prev = await db.prepare(`SELECT value FROM meta WHERE key = 'reply_refused_last'`).first<{ value: string }>();
+  const [prevId, prevAt] = String(prev?.value ?? '').split('|');
+  const mark = (id: string) => [
+    db.prepare(`UPDATE reply_queue SET status = 'failed', detail = ?2 WHERE comment_id = ?1 AND status = 'queued'`).bind(id, `Instagram won't take a reply on this comment: ${String(err).slice(0, 200)}`),
+    db.prepare('UPDATE processed_comments SET replied = -1 WHERE comment_id = ?1 AND replied = 0').bind(id),
+  ];
+  const unmark = (id: string) => [
+    db.prepare(`UPDATE reply_queue SET status = 'queued', detail = NULL WHERE comment_id = ?1 AND status = 'failed'`).bind(id),
+    db.prepare('UPDATE processed_comments SET replied = 0 WHERE comment_id = ?1 AND replied = -1').bind(id),
+  ];
+  const setLast = (v: string) => db.prepare(`INSERT INTO meta (key, value) VALUES ('reply_refused_last', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(v);
+  if (prevId && prevId !== commentId && Date.now() - Number(prevAt) < 3 * 3600_000) {
+    await db.batch([...unmark(prevId), setLast(''), eventStmt(env, 'reply_refused', null, { comment: commentId, also: prevId, verdict: 'account block' })]);
+    await pauseReplies(env, err);
+    return 'paused';
+  }
+  await db.batch([...mark(commentId), setLast(`${commentId}|${Date.now()}`), eventStmt(env, 'reply_refused', null, { comment: commentId, verdict: 'skipped this comment' })]);
+  log('reply_refused_skip', { comment: commentId });
+  return 'skipped';
+}
+
+/** The posts to scan this time: the newest IG_MEDIA_LIMIT, plus the next batch of older ones in rotation. */
+async function scanSlice(env: Env, all: Array<{ id: string }>) {
+  const n = intVar(env.IG_MEDIA_LIMIT, 10);
+  const newest = all.slice(0, n);
+  const older = all.slice(n);
+  if (!older.length) return newest;
+  const row = await env.DB.prepare(`SELECT value FROM meta WHERE key = 'scan_cursor'`).first<{ value: string }>();
+  const start = (Number(row?.value ?? 0) | 0) % older.length;
+  const batch = older.slice(start, start + n);
+  if (batch.length < n) batch.push(...older.slice(0, Math.min(n - batch.length, start)));
+  await env.DB.prepare(`INSERT INTO meta (key, value) VALUES ('scan_cursor', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(String((start + n) % older.length)).run();
+  return [...newest, ...batch];
 }

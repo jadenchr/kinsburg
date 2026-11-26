@@ -51,7 +51,7 @@
     "EDGE_CACHE": "true",
     "IG_API_BASE": "https://graph.facebook.com/v27.0",
     "META_APP_ID": "2198331804450174",
-    "IG_MEDIA_LIMIT": "10",
+    "IG_MEDIA_LIMIT": "6", // each scan: the 6 newest posts + 6 older ones in rotation, so every Reel is covered
     "IG_REPLY_ENABLED": "true", // welcome replies, paced: they share the 2-per-run / 80-a-day allowance with queued replies and pause during blocks
     "IG_CALLS_ENABLED": "true", // announce calls for help and elections under the latest post
     "IG_REPLY_MAX_PER_RUN": "2", // a human pace; Instagram blocks bursts of replies
