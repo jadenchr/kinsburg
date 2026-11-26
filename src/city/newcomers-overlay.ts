@@ -6,7 +6,7 @@
 // Tags keep a constant screen size (scale 1/S between limits, like the incident badges), hide when
 // zoomed far out (except the 3 newest), and a greedy pass in screen space drops the older tag when two
 // would overlap. Bob and the page-load pop-in are deterministic from the frame time `t`.
-import { FONTS, alpha, mix, type SkyState } from '../theme';
+import { FONTS, alpha, type SkyState } from '../theme';
 import { clamp, hash } from './iso';
 import type { Model } from './model';
 import { projFor } from './objects';
@@ -79,7 +79,7 @@ export function createNewcomersOverlay(): NewcomersOverlay {
     const placed: number[] = [];
     const m = 40 * k + 80;
     ctx.save();
-    ctx.font = `700 12px ${FONTS.ui}`;
+    ctx.font = `800 13px ${FONTS.ui}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     for (const g of tags) {
@@ -116,17 +116,20 @@ export function createNewcomersOverlay(): NewcomersOverlay {
       ctx.moveTo(-4, 0);
       ctx.lineTo(0, 5);
       ctx.lineTo(4, 0);
-      ctx.fillStyle = mix('#fffaf0', '#14213f', dk);
+      // Two fixed styles, never a blend: fading both the pill and the text toward each other left
+      // them the same grey at dusk. Light pill + dark text by day, navy pill + cream text from dusk.
+      const dark = dk >= 0.5;
+      ctx.fillStyle = dark ? '#14213f' : '#fffaf0';
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.shadowColor = 'transparent';
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = mix(GOLD_DARK, '#f3c648', dk);
+      ctx.strokeStyle = dark ? '#f3c648' : GOLD_DARK;
       ctx.stroke();
       // sparkle
       const sp = 0.75 + 0.25 * Math.sin(t / 380 + g.seed * 2);
       const sx0 = -w / 2 + PAD + 3, sy0 = -h / 2;
-      ctx.fillStyle = mix(GOLD, '#ffd966', dk);
+      ctx.fillStyle = dark ? '#ffd966' : GOLD;
       ctx.beginPath();
       const r1 = 4.6 * sp, r2 = 1.4 * sp;
       for (let i = 0; i < 8; i++) {
@@ -137,7 +140,12 @@ export function createNewcomersOverlay(): NewcomersOverlay {
       }
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = mix('#3a2a08', '#fff4d6', dk);
+      // a thin edge in the pill colour keeps the letters crisp over snow, lights and halos
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = dark ? '#14213f' : '#fffaf0';
+      ctx.strokeText(g.text, -w / 2 + PAD + DOT - 2, -h / 2 + 0.5);
+      ctx.fillStyle = dark ? '#fff4d6' : '#2a1d05';
       ctx.fillText(g.text, -w / 2 + PAD + DOT - 2, -h / 2 + 0.5);
       ctx.restore();
     }
