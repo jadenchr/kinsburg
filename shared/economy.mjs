@@ -21,7 +21,7 @@ export const PRICE_TIERS = [15000, 25000, 50000, 125000];
 export const BUILD_TIER = {
   cafe: 0, bakery: 0, icecream: 0, pizza: 0, shop: 0, fountain: 0, garden: 0, playground: 0, statue: 0, treehouse: 0, skatepark: 0,
   park: 1, pool: 1, library: 1, carousel: 1, cinema: 1,
-  museum: 2, castle: 2, stadium: 2, ship: 2, university: 2,
+  museum: 2, castle: 2, stadium: 2, ship: 2, university: 2, herotower: 3,
   ferris: 3, tower: 3,
 };
 export const buildPrice = (kind) => PRICE_TIERS[BUILD_TIER[kind] ?? 1];

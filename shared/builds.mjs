@@ -39,6 +39,7 @@ export const BUILDS = [
   { kind: 'ship', label: 'Pirate ship', emoji: '🏴‍☠️', words: ['pirate ship', 'ship', 'boat', 'yacht'] },
   { kind: 'cinema', label: 'Cinema', emoji: '🎬', words: ['cinema', 'movie theater', 'movie theatre', 'theater', 'theatre'] },
   { kind: 'university', label: 'University', emoji: '🎓', words: ['university', 'universities', 'uni', 'college', 'colleges', 'campus'] },
+  { kind: 'herotower', label: 'Kinsburg Tower', emoji: '🌟', words: ['avengers tower', 'avenger tower', 'stark tower', 'hero tower', 'kinsburg tower', 'avengers'] },
 ];
 
 /** Kinds that belong in the neighbourhoods, never in the centre (src/city/sites.ts assignBuildSites). */

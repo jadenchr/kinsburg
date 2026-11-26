@@ -8,7 +8,7 @@
 // plot is a 'vacant.lot.<n>' resident row; when the friend comments MOVE IN, joinMany renames the
 // row to them (claimHolds), so they live next door. The friend is never added without asking.
 import { BESTIE_HOLD_DAYS, BUILDS_PER_DAY, BUILD_BY_KIND, REQUEST_DAYS, parseBuildRequest } from '../../shared/builds.mjs';
-import { HOMES, cityDayAt, traitsFor, type Row } from '../../shared/residents-format.mjs';
+import { HOMES, cityDayAt, parseHomeCommand, traitsFor, type Row } from '../../shared/residents-format.mjs';
 import { HOME_PRICE, buildPrice } from '../../shared/economy.mjs';
 import { RESIDENT_COLS, eventStmt, toRow, writeSnapshots } from './city';
 import { cityCash, ledgerStmt, moveInStmt } from './cash';
@@ -27,6 +27,8 @@ export async function processBuildComments(env: Env, comments: IgComment[]) {
   let found = 0;
   for (const c of comments) {
     if (!c.id || !c.username || c.username.toLowerCase() === own) continue;
+    // "TOWER", "villa pls": someone asking for a special home, not for the city to build something
+    if (parseHomeCommand(c.text)) continue;
     const kind = parseBuildRequest(c.text);
     if (!kind) continue;
     found++;

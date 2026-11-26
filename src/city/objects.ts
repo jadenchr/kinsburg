@@ -8,6 +8,7 @@ import {
 import type { Look } from './ground';
 import type { Obj } from './model';
 import { drawBuild, drawHoldSign, drawSecret } from './builds';
+import { drawLights, drawTree, setSnowSky, snowFace, snowMat, snowTop, xmasOn } from './xmas';
 import { drawFireStation, drawHospital, drawPet, drawPoliceStation, drawSchool, drawStationLights, drawVet, hipRoof, windowRow } from './services';
 
 const TAU = Math.PI * 2;
@@ -20,7 +21,11 @@ export function projFor(o: Obj): Proj {
 
 export function drawEntry(ctx: CanvasRenderingContext2D, o: Obj, look: Look, detail: number, highlighted = false): void {
   const sky = look.sky;
+  setSnowSky(sky);
   switch (o.kind) {
+    case 'xmastree':
+      drawTree(ctx, o, sky, detail, projFor(o));
+      return;
     case 'house': {
       const p = projFor(o);
       const r = o.resident!;
@@ -109,6 +114,12 @@ function round(ctx: CanvasRenderingContext2D, x: number, y: number, k: number, l
     ctx.arc(x + sx * r * 0.4, cy - r * 0.4, r * 0.3, 0, TAU);
     ctx.fill();
   }
+  if (xmasOn()) {
+    ctx.fillStyle = snowMat(look.sky).top;
+    ctx.beginPath();
+    ctx.ellipse(x + sx * r * 0.15, cy - r * 0.62, r * 0.6, r * 0.3, 0, 0, TAU);
+    ctx.fill();
+  }
 }
 
 function cone(ctx: CanvasRenderingContext2D, x: number, y: number, k: number, look: Look): void {
@@ -135,6 +146,17 @@ function cone(ctx: CanvasRenderingContext2D, x: number, y: number, k: number, lo
   ctx.quadraticCurveTo(x + r * 0.5, b + r * 0.35, x, b + r * 0.4);
   ctx.closePath();
   ctx.fill();
+  if (xmasOn()) {
+    // snow on the boughs: a cap near the tip and a lighter band lower down
+    ctx.fillStyle = snowMat(look.sky).top;
+    ctx.beginPath();
+    ctx.moveTo(x, b - h);
+    ctx.lineTo(x + r * 0.5, b - h * 0.5);
+    ctx.quadraticCurveTo(x + r * 0.2, b - h * 0.42, x, b - h * 0.5);
+    ctx.quadraticCurveTo(x - r * 0.2, b - h * 0.42, x - r * 0.5, b - h * 0.5);
+    ctx.closePath();
+    ctx.fill();
+  }
 }
 
 function drawBush(ctx: CanvasRenderingContext2D, o: Obj, look: Look): void {
@@ -236,6 +258,10 @@ function drawShop(ctx: CanvasRenderingContext2D, o: Obj, sky: SkyState, detail: 
   box(ctx, p, u0, u1, v0, v1, 0, H, null, wall.l, wall.r);
   box(ctx, p, u0 - 0.02, u1 + 0.02, v0 - 0.02, v1 + 0.02, H, H + 0.06, roof.top, roof.l, roof.r);
   if (detail >= 1) fillPoly(ctx, p, [u0 + 0.04, v0 + 0.04, H + 0.06, u1 - 0.04, v0 + 0.04, H + 0.06, u1 - 0.04, v1 - 0.04, H + 0.06, u0 + 0.04, v1 - 0.04, H + 0.06], roof.dark);
+  if (xmasOn()) {
+    snowTop(ctx, p, sky, u0 - 0.02, u1 + 0.02, v0 - 0.02, v1 + 0.02, H + 0.06, 0.02);
+    drawLights(ctx, p, sky, [[u0 - 0.02, v1 + 0.026, H + 0.02, u1 + 0.02, v1 + 0.026, H + 0.02], [u1 + 0.026, v1 + 0.02, H + 0.02, u1 + 0.026, v0 - 0.02, H + 0.02]], o.seed, detail);
+  }
 
   const onLeft = o.w >= o.h;
   const lit = sky.glow > 0.05;
@@ -341,6 +367,7 @@ function townhall(ctx: CanvasRenderingContext2D, o: Obj, sky: SkyState, detail: 
     box(ctx, hp, -U - 0.03, U + 0.03, -HV - 0.03, HV + 0.03, H - 0.05, H, null, stone.l, stone.r);
   }
   hipRoof(ctx, hp, U + 0.08, HV + 0.08, H, H + 0.36, U * 0.55, roof);
+  if (xmasOn()) drawLights(ctx, hp, sky, [[-U - 0.06, HV + 0.09, H + 0.005, U + 0.06, HV + 0.09, H + 0.005], [U + 0.09, HV + 0.07, H + 0.005, U + 0.09, -HV - 0.07, H + 0.005]], o.seed, detail, 1.15);
   // tower on the front
   const tv = V1 + 0.15;
   const T = 0.32;
@@ -372,6 +399,11 @@ function townhall(ctx: CanvasRenderingContext2D, o: Obj, sky: SkyState, detail: 
   const S = T + 0.04, Z0 = 1.24, Z1 = 1.72;
   fillPoly(ctx, tp, [-S, S, Z0, S, S, Z0, 0, 0, Z1], roof.l);
   fillPoly(ctx, tp, [S, S, Z0, S, -S, Z0, 0, 0, Z1], roof.r);
+  if (xmasOn()) {
+    const sn = snowMat(sky);
+    snowFace(ctx, tp, sn.l, [-S, S, Z0], [S, S, Z0], [0, 0, Z1], [0, 0, Z1], 0.7);
+    snowFace(ctx, tp, sn.r, [S, S, Z0], [S, -S, Z0], [0, 0, Z1], [0, 0, Z1], 0.7);
+  }
   // flag
   const fx = projX(tp, 0, 0), fy = projY(tp, 0, 0, Z1);
   ctx.fillStyle = pal.edge;

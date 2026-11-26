@@ -25,6 +25,8 @@ import { drawRing } from './house';
 import { createSimOverlay } from './sim-overlay';
 import { createPoliticsOverlay } from './politics-overlay';
 import { createNewcomersOverlay } from './newcomers-overlay';
+import { christmasOn } from '../season';
+import { drawSleigh, drawSnowfall, drawTwinkle } from './xmas';
 
 interface Chunk {
   lod: number;
@@ -373,6 +375,7 @@ export const createCityView: CreateCityView = (canvas) => {
     }
     drawBillboard(t);
     drawExtrasOverlay(t, S, v);
+    if (christmasOn()) drawTwinkle(ctx, m, sky, t, S, v);
     {
       // what stands in front of a sprite on tile (tx, ty) is repainted over it, inside a clip box
       const sdetail = Math.max(1, detailFor(S));
@@ -393,6 +396,12 @@ export const createCityView: CreateCityView = (canvas) => {
       newcomers.draw(ctx, sky, t, S, v, opts);
     }
     for (const i of rings) drawHighlight(m.objs[i], ringMs, S);
+    if (christmasOn() && !reduced()) {
+      // snowfall and Santa's sleigh: light screen-space overlays, driven by the frame time only
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      drawSnowfall(ctx, W, H, dpr, t, cam.x, cam.y, S, sky);
+      drawSleigh(ctx, W, H, dpr, t, sky, reelMode);
+    }
   }
 
   /** Sparkles on found secrets, hearts between besties. */
@@ -709,6 +718,7 @@ export const createCityView: CreateCityView = (canvas) => {
         Math.round(s.glow * 20),
         Math.round(s.darkness * 20),
         Math.round(s.sunX * 10),
+        christmasOn() ? 'xmas' : '',
       ].join();
       sky = s;
       look = makeLook(s);

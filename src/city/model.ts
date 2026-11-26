@@ -7,6 +7,8 @@ import { HW, HH, hash } from './iso';
 import { assignBuildSites, computeSites, type SecretSpot } from './sites';
 import type { BuildInfo, Hold } from './api';
 import { BUILD_HEIGHT, BUILD_SCALE } from './builds';
+import { christmasOn } from '../season';
+import { TREE_HEIGHT, TREE_REACH, pickTreeTile } from './xmas';
 
 export const T_GRASS = 0;
 export const T_ROAD = 1;
@@ -29,7 +31,7 @@ const CODE: Record<string, number> = {
   [TILE.sand]: T_SAND,
 };
 
-export type ObjKind = 'house' | 'lot' | 'shop' | 'civic' | 'landmark' | 'trees' | 'bush' | 'lamp' | 'build' | 'secret';
+export type ObjKind = 'house' | 'lot' | 'shop' | 'civic' | 'landmark' | 'trees' | 'bush' | 'lamp' | 'build' | 'secret' | 'xmastree';
 
 export interface Obj {
   kind: ObjKind;
@@ -199,6 +201,15 @@ export function buildModel(data: CityData, extras: Extras = { builds: [], holds:
       if (occ[s.y * W + s.x] >= 0) continue;
       bySecret.set(s.index, add({ kind: 'secret', x: s.x, y: s.y, w: 1, h: 1, seed: (s.index * 40503 + 7) >>> 0, height: 18, reach: 6, secret: s }, true));
     }
+  }
+
+  // Christmas: the giant tree on the town square, on a plaza tile clear of every build site,
+  // landmark and the sponsor billboard (so it can never sit on a build, whatever gets built)
+  if (christmasOn()) {
+    const sites = computeSites(data);
+    const th = data.landmarks.find((l) => l.kind === 'townhall');
+    const spot = pickTreeTile({ W, H, tile, occ, townhall: th }, T_PLAZA, [...sites.builds, ...sites.secrets], data.landmarks);
+    if (spot) add({ kind: 'xmastree', x: spot.x, y: spot.y, w: 1, h: 1, seed: (spot.x * 73856093) ^ (spot.y * 19349663), height: TREE_HEIGHT, reach: TREE_REACH }, true);
   }
 
   // trees, bushes and lamps on free tiles

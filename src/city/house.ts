@@ -4,6 +4,7 @@ import { ROOFS, WALLS, COLORS, alpha, mix, type SkyState } from '../theme';
 import type { HomeKind, Perk } from '../types';
 import { drawHome } from './homes';
 import { box, fillPoly, groundEllipse, glassColor, hash, material, projX, projY, wallMat, type Proj } from './iso';
+import { drawLights, registerHousePaths, snowFace, snowMat, snowTop, xmasOn } from './xmas';
 
 export interface HouseOptions {
   /** 0..11, see Resident.houseStyle */
@@ -201,10 +202,31 @@ export function drawHouseEx(
     const Ef = E + 0.03;
     box(ctx, p, -Ef, Ef, -Ef, Ef, H, H + 0.05, roof.top, roof.l, roof.r);
     if (detail >= 1) fillPoly(ctx, p, [-E + 0.03, -E + 0.03, H + 0.05, E - 0.03, -E + 0.03, H + 0.05, E - 0.03, E - 0.03, H + 0.05, -E + 0.03, E - 0.03, H + 0.05], mix(roof.top, roof.dark, 0.3));
+    if (xmasOn()) snowTop(ctx, p, sky, -Ef, Ef, -Ef, Ef, H + 0.05, 0.035);
     const brick = material(sky, mix(ROOFS[(style + 2) % ROOFS.length], pal.edge, 0.25));
     const c0 = orient === 0 ? 0.06 : -0.22;
     const c1 = orient === 0 ? -0.22 : 0.06;
     box(ctx, p, c0, c0 + 0.12, c1, c1 + 0.12, H + 0.05, H + 0.25, brick.top, brick.l, brick.r);
+    if (xmasOn()) snowTop(ctx, p, sky, c0, c0 + 0.12, c1, c1 + 0.12, H + 0.25, 0.008);
+  }
+
+  // ── Christmas: snow on the roof, fairy lights along the eaves ──
+  if (xmasOn()) {
+    const sn = snowMat(sky);
+    if (shape === 0) {
+      if (orient === 0) snowFace(ctx, p, sn.l, [-Eg, E2, He], [Eg, E2, He], [-Eg, 0, Hr], [Eg, 0, Hr]);
+      else snowFace(ctx, p, sn.r, [E2, -Eg, He], [E2, Eg, He], [0, -Eg, Hr], [0, Eg, Hr]);
+    } else if (shape === 1) {
+      const r = 0.12;
+      if (orient === 0) {
+        snowFace(ctx, p, sn.r, [E2, E2, He], [E2, -E2, He], [r, 0, Hr], [r, 0, Hr]);
+        snowFace(ctx, p, sn.l, [-E2, E2, He], [E2, E2, He], [-r, 0, Hr], [r, 0, Hr]);
+      } else {
+        snowFace(ctx, p, sn.l, [-E2, E2, He], [E2, E2, He], [0, r, Hr], [0, r, Hr]);
+        snowFace(ctx, p, sn.r, [E2, -E2, He], [E2, E2, He], [0, -r, Hr], [0, r, Hr]);
+      }
+    }
+    drawLights(ctx, p, sky, housePaths(style, extra), seed, detail);
   }
 
   // ── perks ──
@@ -229,6 +251,29 @@ export function drawHouseEx(
     }
   }
 }
+
+/** Where a house's fairy lights run: the front eave and the other visible edge of the roof. */
+export function housePaths(style: number, level: number): number[][] {
+  const st = Math.abs(Math.floor(style)) % 12;
+  const shape = houseShape(st);
+  const orient = Math.floor(st / 3) % 2;
+  const H = WALL_H[shape] + floors(level) * FLOOR_H;
+  const He = H - 0.02;
+  const Hr = H + ROOF_H[shape];
+  const E2 = E + O;
+  const Eg = E + 0.035;
+  if (shape === 2) {
+    const Ef = E + 0.03, z = H + 0.045;
+    return [[-Ef, Ef + 0.004, z, Ef + 0.004, Ef + 0.004, z, Ef + 0.004, -Ef, z]];
+  }
+  if (shape === 0) {
+    return orient === 0
+      ? [[-Eg, E2, He - 0.01, Eg, E2, He - 0.01], [Eg + 0.004, E2, He - 0.01, Eg + 0.004, 0, Hr - 0.01, Eg + 0.004, -E2, He - 0.01]]
+      : [[-E2, Eg + 0.004, He - 0.01, 0, Eg + 0.004, Hr - 0.01, E2, Eg + 0.004, He - 0.01], [E2, Eg, He - 0.01, E2, -E2, He - 0.01]];
+  }
+  return [[-E2, E2, He - 0.01, E2, E2, He - 0.01], [E2, E2, He - 0.01, E2, -E2, He - 0.01]];
+}
+registerHousePaths(housePaths);
 
 function ridgeLine(ctx: CanvasRenderingContext2D, p: Proj, c: number[], color: string): void {
   ctx.beginPath();

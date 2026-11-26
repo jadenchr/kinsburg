@@ -29,6 +29,8 @@ export interface Palette {
 }
 
 export interface SkyState {
+  /** the clock this sky was made for, in hours (0 ≤ h < 24) — drives how busy the streets are */
+  hour: number;
   phase: Phase;
   /** 0 = full daylight, 1 = deepest night */
   darkness: number;
@@ -144,6 +146,7 @@ export function skyAt(date: Date): SkyState {
   // Sun travels east → west from 6:00 to 20:00.
   const sunX = Math.max(-1, Math.min(1, ((hour - 13) / 7)));
   return {
+    hour,
     phase: t < 0.5 ? a.phase : b.phase,
     darkness,
     glow,
@@ -174,6 +177,26 @@ export const COLORS = {
   nightInkSoft: '#b4bcd8',
   nightPaper: '#151d3b',
   danger: '#b3261e',
+} as const;
+
+/** Christmas season (see src/season.ts): snow, fairy lights, the town-square tree, Santa. */
+export const XMAS = {
+  /** fresh snow, in daylight */
+  snow: '#f6faff',
+  /** snow in the shade / on the far side of a roof */
+  snowShade: '#c3d3ea',
+  /** fairy-light bulbs, cycled along a string */
+  lights: ['#ff4d4d', '#ffc83d', '#4dd2ff', '#7be07b', '#ff7ad9'],
+  /** the town-square tree */
+  pine: '#1f6b3c',
+  pineDeep: '#134a2b',
+  star: '#ffd94a',
+  baubles: ['#e2413c', '#f3c13a', '#3f7de0', '#e8eef6', '#c94fb0'],
+  garland: '#f4d27a',
+  /** Santa's sleigh: coat, wood, sack, glowing nose */
+  sleigh: '#7a1f2a',
+  nose: '#ff3b3b',
+  sparkle: '#ffe9a3',
 } as const;
 
 export const FONTS = {

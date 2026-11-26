@@ -5,6 +5,7 @@ import { COLORS, ROOFS, WALLS, alpha, mix, type SkyState } from '../theme';
 import type { Pet } from '../types';
 import { HH, HW, box, fillPoly, glassColor, groundEllipse, hash, material, projX, projY, wallMat, type Proj } from './iso';
 import type { Obj } from './model';
+import { snowHip, xmasOn } from './xmas';
 
 const TAU = Math.PI * 2;
 const RED = '#c8463d';
@@ -22,6 +23,7 @@ export function hipRoof(ctx: CanvasRenderingContext2D, p: Proj, E1: number, E2: 
   fillPoly(ctx, p, [-E1, -E2, z0, E1, -E2, z0, r, 0, z1, -r, 0, z1], mat.dark);
   fillPoly(ctx, p, [E1, E2, z0, E1, -E2, z0, r, 0, z1], mat.r);
   fillPoly(ctx, p, [-E1, E2, z0, E1, E2, z0, r, 0, z1, -r, 0, z1], mat.l);
+  if (xmasOn()) snowHip(ctx, p, E1, E2, z0, z1, r);
 }
 
 export function windowRow(

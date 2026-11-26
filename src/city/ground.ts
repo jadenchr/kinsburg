@@ -1,6 +1,8 @@
 // Sky-derived colour table + the batched ground pass (tiles, road paint, crops, foam,
 // map-edge cliffs, far-zoom tree blobs, streetlamp light pools).
 import { COLORS, ROOFS, alpha, mix, type SkyState } from '../theme';
+import { christmasOn } from '../season';
+import { snowMat } from './xmas';
 import { HH, HW, hash, sideShade } from './iso';
 import {
   TILE_TYPES, T_FARM, T_GRASS, T_PARK, T_PLAZA, T_ROAD, T_SAND, T_TREES, T_WATER, type Model,
@@ -62,6 +64,21 @@ export function makeLook(sky: SkyState): Look {
       }
       tiles[t * 5 + l] = c;
     }
+  const xmas = christmasOn();
+  if (xmas) {
+    // snow: the grass goes mostly white with hints of green showing through (more where the patch is
+    // darker); roads and the square stay cleared, with only a dusting
+    const snow = snowMat(sky).ground;
+    const cover: Record<number, number> = {
+      [T_GRASS]: 0.86, [T_PARK]: 0.8, [T_TREES]: 0.74, [T_FARM]: 0.76, [T_SAND]: 0.55, [T_PLAZA]: 0.3, [T_ROAD]: 0.14,
+    };
+    for (let t = 0; t < TILE_TYPES; t++) {
+      const c0 = cover[t];
+      if (c0 === undefined) continue;
+      for (let l = 0; l < 5; l++) tiles[t * 5 + l] = mix(tiles[t * 5 + l], snow, c0 - (t === T_GRASS || t === T_PARK || t === T_TREES ? 0.16 * (l / 4) : 0));
+    }
+  }
+  const snowG = xmas ? snowMat(sky).ground : '';
   const earth = mix(p.farm, p.edge, 0.5);
   const earthD = mix(earth, p.edge, 0.45);
   const wEdge = mix(p.water, p.edge, 0.3);
@@ -69,22 +86,22 @@ export function makeLook(sky: SkyState): Look {
   return {
     sky,
     tiles,
-    roadLine: mix(p.roadLine, p.road, 0.15),
-    curb: mix(p.road, p.wall, 0.35),
+    roadLine: xmas ? mix(mix(p.roadLine, p.road, 0.15), snowG, 0.2) : mix(p.roadLine, p.road, 0.15),
+    curb: xmas ? mix(mix(p.road, p.wall, 0.35), snowG, 0.55) : mix(p.road, p.wall, 0.35),
     foam: alpha(p.waterShine, 0.75),
-    crop: mix(p.farm, p.grassShade, 0.6),
+    crop: xmas ? mix(mix(p.farm, p.grassShade, 0.6), snowG, 0.55) : mix(p.farm, p.grassShade, 0.6),
     paving: mix(plaza, p.edge, 0.14),
     cliffL: mix(earth, earthD, sh.l),
     cliffR: mix(earth, earthD, sh.r),
     cliffWL: mix(wEdge, wEdgeD, sh.l),
     cliffWR: mix(wEdge, wEdgeD, sh.r),
-    treeLit: p.tree,
-    treeShade: p.treeShade,
-    treeL: mix(p.tree, p.treeShade, sh.l),
-    treeR: mix(p.tree, p.treeShade, sh.r),
-    treeHi: mix(p.tree, p.grass, 0.45),
+    treeLit: xmas ? mix(p.tree, snowG, 0.2) : p.tree,
+    treeShade: xmas ? mix(p.treeShade, snowG, 0.14) : p.treeShade,
+    treeL: xmas ? mix(mix(p.tree, p.treeShade, sh.l), snowG, 0.16) : mix(p.tree, p.treeShade, sh.l),
+    treeR: xmas ? mix(mix(p.tree, p.treeShade, sh.r), snowG, 0.16) : mix(p.tree, p.treeShade, sh.r),
+    treeHi: xmas ? mix(p.tree, snowG, 0.5) : mix(p.tree, p.grass, 0.45),
     trunk: mix(p.farm, p.edge, 0.6),
-    flowers: [mix(ROOFS[2], p.wall, 0.25), mix(ROOFS[1], p.wall, 0.2), mix(p.wall, p.park, 0.1)].map((c) => mix(c, p.skyTop, 0.45 * sky.darkness)),
+    flowers: [mix(ROOFS[2], p.wall, 0.25), mix(ROOFS[1], p.wall, 0.2), mix(p.wall, p.park, 0.1)].map((c) => mix(xmas ? mix(c, snowG, 0.7) : c, p.skyTop, 0.45 * sky.darkness)),
     lampPost: mix(p.edge, p.road, 0.3),
     lampHead: sky.glow > 0.05 ? mix(p.wall, COLORS.glow, Math.min(1, sky.glow * 1.2)) : mix(p.wall, p.roadLine, 0.4),
     dirt: mix(mix(p.farm, p.sand, 0.5), p.edge, 0.12),

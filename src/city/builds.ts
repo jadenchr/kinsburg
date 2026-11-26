@@ -25,13 +25,13 @@ const K = {
  * Builds drawn larger than one tile: the whole sprite is scaled around its base point (stands,
  * floodlights and crowd included). BUILD_HEIGHT already includes the scale.
  */
-export const BUILD_SCALE: Record<string, number> = { stadium: 1.8, university: 1.5 };
+export const BUILD_SCALE: Record<string, number> = { stadium: 1.8, university: 1.5, herotower: 1.3 };
 
 /** Height above the ground in world px, for chunk bounds and tap tests. */
 export const BUILD_HEIGHT: Record<string, number> = {
   pool: 44, fountain: 46, park: 62, playground: 48, ferris: 104, carousel: 72, castle: 92, tower: 114, statue: 92,
   garden: 40, treehouse: 88, cafe: 52, bakery: 58, icecream: 66, pizza: 56, library: 66, museum: 66, stadium: 104 /* 58 at scale 1 */,
-  skatepark: 36, shop: 52, ship: 88, cinema: 66, university: 100 /* 66 at scale 1 */,
+  skatepark: 36, shop: 52, ship: 88, cinema: 66, university: 100 /* 66 at scale 1 */, herotower: 290 /* ~222 at scale 1 */,
 };
 
 const X = (p: Proj, u: number, v: number) => projX(p, u, v);
@@ -874,6 +874,81 @@ const museum: Draw = (ctx, p, sky, _look, detail, seed) => {
   void pal;
 };
 
+/**
+ * Kinsburg Tower: a tall glass skyscraper with lit floors, a landing pad jutting from the upper
+ * floors, an angled crown and a vertical fin with a glowing gold star (Kinsburg's own emblem: no
+ * third-party names or logos).
+ */
+const herotower: Draw = (ctx, p, sky, _look, detail, seed) => {
+  const glass = wallMat(sky, mix(K.steel, K.navy, 0.35)), stone = wallMat(sky, K.concrete), dark = material(sky, K.ink);
+  shadow(ctx, p, sky, 0.62, 0.18);
+  // podium with a lit lobby
+  box(ctx, p, -0.44, 0.44, -0.44, 0.44, 0, 0.16, stone.top, stone.l, stone.r);
+  faceL(ctx, p, 0.44 + 0.001, -0.3, 0.3, 0.02, 0.13, glassColor(sky, true, 0.9));
+  // the main shaft, floor by floor
+  const top = 2.45;
+  box(ctx, p, -0.27, 0.27, -0.27, 0.27, 0.16, top, null, glass.l, glass.r);
+  const floors = detail >= 1 ? 16 : 8;
+  for (let f = 0; f < floors; f++) {
+    const z0 = 0.2 + (f * (top - 0.3)) / floors, z1 = z0 + ((top - 0.3) / floors) * 0.55;
+    windowRow(ctx, p, sky, 'l', 0.27 + 0.001, -0.23, 0.23, z0, z1, 3, seed + f * 7);
+    windowRow(ctx, p, sky, 'r', 0.27 + 0.001, -0.23, 0.23, z0, z1, 3, seed + f * 7 + 3);
+  }
+  // glass curtain wall: floor bands and mullions, so it reads as glass by day too
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = alpha(K.white, lit(sky) ? 0.12 : 0.32);
+  ctx.beginPath();
+  for (let f = 0; f <= floors; f++) {
+    const z = 0.2 + (f * (top - 0.3)) / floors;
+    ctx.moveTo(X(p, -0.27, 0.27), Y(p, -0.27, 0.27, z)); ctx.lineTo(X(p, 0.27, 0.27), Y(p, 0.27, 0.27, z));
+    ctx.lineTo(X(p, 0.27, -0.27), Y(p, 0.27, -0.27, z));
+  }
+  for (const a of [-0.09, 0.09]) {
+    ctx.moveTo(X(p, a, 0.27), Y(p, a, 0.27, 0.16)); ctx.lineTo(X(p, a, 0.27), Y(p, a, 0.27, top));
+    ctx.moveTo(X(p, 0.27, a), Y(p, 0.27, a, 0.16)); ctx.lineTo(X(p, 0.27, a), Y(p, 0.27, a, top));
+  }
+  ctx.stroke();
+  // a sky reflection down the left face by day
+  if (!lit(sky)) fillPoly(ctx, p, [-0.27, 0.27, 0.16, -0.12, 0.27, 0.16, -0.02, 0.27, top, -0.17, 0.27, top], alpha(K.white, 0.12));
+  // corner mullions
+  line(ctx, X(p, 0.27, 0.27), Y(p, 0.27, 0.27, 0.16), X(p, 0.27, 0.27), Y(p, 0.27, 0.27, top), 1.4, alpha(K.white, 0.5));
+  // landing pad jutting out from the upper floors, with a lit H ring
+  const zp = 1.78;
+  box(ctx, p, 0.27, 0.74, -0.2, 0.2, zp, zp + 0.05, stone.top, stone.l, stone.r);
+  const hx = X(p, 0.52, 0), hy = Y(p, 0.52, 0, zp + 0.05);
+  ctx.strokeStyle = lit(sky) ? mix(K.yellow, COLORS.glow, 0.5) : K.yellow;
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.ellipse(hx, hy, 0.13 * p.s * 0.7071, 0.13 * p.s * 0.3536, 0, 0, TAU);
+  ctx.stroke();
+  glow(ctx, hx, hy, 14, sky, 0.5);
+  // angled crown: wider on the right, sloping back
+  fillPoly(ctx, p, [-0.27, 0.27, top, 0.27, 0.27, top, 0.36, 0.27, top + 0.34, -0.27, 0.27, top + 0.2], glass.l);
+  fillPoly(ctx, p, [0.27, 0.27, top, 0.27, -0.27, top, 0.36, -0.27, top + 0.34, 0.36, 0.27, top + 0.34], glass.r);
+  fillPoly(ctx, p, [-0.27, -0.27, top + 0.2, 0.36, -0.27, top + 0.34, 0.36, 0.27, top + 0.34, -0.27, 0.27, top + 0.2], dark.top);
+  // the fin with the star emblem
+  box(ctx, p, -0.06, 0.06, -0.24, 0.28, top + 0.2, top + 0.85, stone.top, stone.l, stone.r);
+  const sx = X(p, 0, 0.28), sy = Y(p, 0, 0.28, top + 0.56);
+  const lit_ = lit(sky);
+  glow(ctx, sx, sy, 34, sky, 1);
+  ctx.fillStyle = lit_ ? mix(COLORS.gold, COLORS.glow, 0.4) : COLORS.gold;
+  ctx.beginPath();
+  for (let k = 0; k < 10; k++) {
+    const r = k % 2 ? 4.2 : 10, a = -Math.PI / 2 + (k * Math.PI) / 5;
+    ctx.lineTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+  }
+  ctx.closePath();
+  ctx.fill();
+  // antenna with a red light
+  const ax = X(p, 0, 0), ay = Y(p, 0, 0, top + 0.85);
+  line(ctx, ax, ay, ax, ay - 16, 1.2, K.steel);
+  ctx.fillStyle = '#ff4d4d';
+  ctx.beginPath();
+  ctx.arc(ax, ay - 16, 1.8, 0, TAU);
+  ctx.fill();
+  glow(ctx, ax, ay - 16, 8, sky, 0.8);
+};
+
 /** A red-brick hall on a green quad with a clock tower, copper dome and a columned porch. */
 const university: Draw = (ctx, p, sky, _look, detail, seed) => {
   const brick = wallMat(sky, K.brick), stone = wallMat(sky, K.stone), slate = material(sky, K.ink), lawn = material(sky, K.leaf);
@@ -1079,7 +1154,7 @@ const cinema: Draw = (ctx, p, sky, _look, detail, seed) => {
 
 const KINDS: Record<string, Draw> = {
   pool, fountain, park, playground, ferris, carousel, castle, tower, statue, garden, treehouse, cafe, bakery,
-  icecream, pizza, library, museum, stadium, skatepark, shop: shopBuild, ship, cinema, university,
+  icecream, pizza, library, museum, stadium, skatepark, shop: shopBuild, ship, cinema, university, herotower,
 };
 
 export function drawBuild(ctx: CanvasRenderingContext2D, o: Obj, look: Look, detail: number, proj: Proj): void {

@@ -3,6 +3,7 @@
 import { COLORS, WALLS, alpha, mix, type SkyState } from '../theme';
 import type { HomeKind, Perk } from '../types';
 import { box, fillPoly, glassColor, groundEllipse, hash, material, projX, projY, wallMat, type Proj } from './iso';
+import { drawLights, snowFace, snowMat, snowTop, xmasOn } from './xmas';
 
 export interface HomeOptions {
   style: number;
@@ -112,6 +113,7 @@ function drawVilla(ctx: CanvasRenderingContext2D, p: Proj, opts: HomeOptions, de
   }
   // flat roof slab with overhang
   box(ctx, p, VU0 - 0.03, VU1 + 0.03, VV0 - 0.03, VV1 + 0.03, SLAB_Z, UP_Z, slab.top, slab.l, slab.r);
+  if (xmasOn()) snowTop(ctx, p, sky, VU0 - 0.03, VU1 + 0.03, VV0 - 0.03, VV1 + 0.03, UP_Z, 0.035);
 
   // ── upper volume ──
   const u0 = -0.34, u1 = 0.0, v0 = -0.3, v1 = 0.22;
@@ -128,9 +130,16 @@ function drawVilla(ctx: CanvasRenderingContext2D, p: Proj, opts: HomeOptions, de
     fillPoly(ctx, p, [a1, b1, UP_TOP, a1, b0, UP_TOP, cu + r, cv, z1], roof.r);
     fillPoly(ctx, p, [a0, b1, UP_TOP, a1, b1, UP_TOP, cu + r, cv, z1, cu - r, cv, z1], roof.l);
     if (detail >= 1) fillPoly(ctx, p, [a0, b1, UP_TOP, a1, b1, UP_TOP, a1, b1, UP_TOP - 0.025, a0, b1, UP_TOP - 0.025], roof.dark);
+    if (xmasOn()) {
+      const sn = snowMat(sky);
+      snowFace(ctx, p, sn.r, [a1, b1, UP_TOP], [a1, b0, UP_TOP], [cu + r, cv, z1], [cu + r, cv, z1]);
+      snowFace(ctx, p, sn.l, [a0, b1, UP_TOP], [a1, b1, UP_TOP], [cu - r, cv, z1], [cu + r, cv, z1]);
+    }
   } else {
     box(ctx, p, u0 - 0.04, u1 + 0.04, v0 - 0.04, v1 + 0.04, UP_TOP, UP_TOP + 0.03, roof.top, roof.l, roof.r);
+    if (xmasOn()) snowTop(ctx, p, sky, u0 - 0.04, u1 + 0.04, v0 - 0.04, v1 + 0.04, UP_TOP + 0.03, 0.03);
   }
+  if (xmasOn()) drawLights(ctx, p, sky, [[VU0 - 0.03, VV1 + 0.034, SLAB_Z - 0.005, VU1 + 0.03, VV1 + 0.034, SLAB_Z - 0.005], [VU1 + 0.034, VV1 + 0.03, SLAB_Z - 0.005, VU1 + 0.034, VV0 - 0.03, SLAB_Z - 0.005]], seed, detail);
 
   // ── pool-side bits: lounger, palm ──
   if (detail >= 1) {
@@ -216,6 +225,10 @@ function drawSkyscraper(ctx: CanvasRenderingContext2D, p: Proj, opts: HomeOption
   // podium
   const P = 0.38;
   box(ctx, p, -P, P, -P, P, 0, SKY_PODIUM, stone.top, stone.l, stone.r);
+  if (xmasOn()) {
+    snowTop(ctx, p, sky, -P, P, -P, P, SKY_PODIUM, 0.03);
+    drawLights(ctx, p, sky, [[-P, P + 0.004, SKY_PODIUM - 0.015, P + 0.004, P + 0.004, SKY_PODIUM - 0.015, P + 0.004, -P, SKY_PODIUM - 0.015]], seed, detail);
+  }
   if (detail >= 1) {
     const lobby = glow > 0.05 && hash(seed, 77) < 0.9;
     fillPoly(ctx, p, qL(P + 0.001, -0.2, 0.2, 0.02, 0.08), glassColor(sky, lobby, 1));
@@ -227,6 +240,7 @@ function drawSkyscraper(ctx: CanvasRenderingContext2D, p: Proj, opts: HomeOption
   box(ctx, p, -T, T, -T, T, SKY_PODIUM, SKY_TOWER, null, glass.l, glass.r);
   // roof of the shaft (visible around the crown)
   fillPoly(ctx, p, [-T, -T, SKY_TOWER, T, -T, SKY_TOWER, T, T, SKY_TOWER, -T, T, SKY_TOWER], glass.top);
+  if (xmasOn()) snowTop(ctx, p, sky, -T, T, -T, T, SKY_TOWER, 0.02);
 
   // window grid: lit cells scatter deterministically per resident
   const cols = 5;
@@ -277,6 +291,7 @@ function drawSkyscraper(ctx: CanvasRenderingContext2D, p: Proj, opts: HomeOption
     // a glowing band under the crown at night
     if (glow > 0.05) fillPoly(ctx, p, qL(0.221, -0.22, 0.22, SKY_TOWER + 0.075, SKY_TOWER + 0.1), alpha(COLORS.glow, 0.55 * glow));
   }
+  if (xmasOn()) snowTop(ctx, p, sky, -0.12, 0.12, -0.12, 0.12, SKY_CROWN2, 0.012);
   const ax = projX(p, 0, 0), ay0 = projY(p, 0, 0, SKY_CROWN2), ay1 = projY(p, 0, 0, SKY_ANT);
   ctx.beginPath();
   ctx.moveTo(ax, ay0);

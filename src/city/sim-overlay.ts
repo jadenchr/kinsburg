@@ -24,6 +24,39 @@ const SPEED_REEL = 2.4;
 const WALK_SPEED = 0.8;
 const MAX_WALKERS = 120;
 
+// ── ambient life ──────────────────────────────────────────────────────────────
+/** Everyone in town at the busiest hour; fewer are drawn (and made) in smaller towns. */
+const MAX_CARS = 60;
+const MAX_STROLLERS = 150;
+/** Cars all drive at the same speed (tiles per second) so two on the same lane never catch up. */
+const CAR_SPEED = 1.1;
+const CAR_SPEED_REEL = 1.5;
+/** Routes start at a handful of hubs: one BFS per hub, never per frame. */
+const HUBS = 14;
+
+type Curve = readonly (readonly [number, number])[];
+/** Share of the cars out at each hour: rush hours ≈ 8–9 and 17–18, a light trickle at night. */
+const CAR_CURVE: Curve = [
+  [0, 0.14], [3, 0.07], [5, 0.14], [6.5, 0.55], [8.5, 1], [10, 0.72], [12, 0.78],
+  [14, 0.7], [16, 0.82], [17.5, 1], [19, 0.7], [21, 0.42], [23, 0.22], [24, 0.14],
+];
+/** Share of the strollers out: busy through the day, a lunchtime peak, evenings thin out. */
+const FOOT_CURVE: Curve = [
+  [0, 0.12], [4, 0.06], [6, 0.2], [8.5, 0.9], [10, 0.72], [12.5, 1], [15, 0.74],
+  [17.5, 0.95], [20, 0.6], [22, 0.3], [24, 0.12],
+];
+function curveAt(c: Curve, hour: number): number {
+  const h = ((hour % 24) + 24) % 24;
+  for (let i = 0; i < c.length - 1; i++) {
+    const [h0, v0] = c[i], [h1, v1] = c[i + 1];
+    if (h <= h1) {
+      const f = h1 === h0 ? 0 : (h - h0) / (h1 - h0);
+      return v0 + (v1 - v0) * f * f * (3 - 2 * f);
+    }
+  }
+  return c[c.length - 1][1];
+}
+
 export interface View {
   minX: number;
   maxX: number;
@@ -93,6 +126,25 @@ interface Walker {
   failed: boolean;
 }
 
+/** A closed loop of tiles (the last one touches the first) that an ambient car or stroller follows. */
+interface Route {
+  path: Int32Array;
+  n: number;
+  /** world-space bounds of the loop, for culling */
+  minX: number; maxX: number; minY: number; maxY: number;
+}
+interface AmbientCar { id: number; route: Route; spec: string; body: string; phase: number; rank: number }
+interface Stroller { id: number; route: Route; speed: number; phase: number; rank: number; lane: number; color: string; skin: string; size: number }
+interface Ambient { cars: AmbientCar[]; folk: Stroller[] }
+/** One thing to paint this frame (cars and strollers are depth-sorted together). */
+interface Item { depth: number; car: AmbientCar | null; st: Stroller | null; gx: number; gy: number; dx: number; dy: number; a: number }
+
+const CAR_COLORS = ['#c8463d', '#2f78c4', '#e0e0dc', '#3b4251', '#e9b824', '#4c9a5a', '#7a5aa8', '#d97a3a', '#8a97a6', '#f4f4f2', '#2a9d9a'];
+const VAN_COLORS = ['#f4f4f2', '#d8dbe0', '#2f78c4', '#8a97a6', '#c8463d'];
+const BUS_COLORS = ['#e8782a', '#2f78c4', '#4c9a5a'];
+const FOLK_COLORS = ['#c8463d', '#2f78c4', '#e9b824', '#4c9a5a', '#7a5aa8', '#d97a3a', '#2a9d9a', '#e8e4da', '#3b4251', '#d65d8a'];
+const SKINS = ['#e6c3a0', '#c99a73', '#8d5e3c', '#f1d3b8', '#6b4429'];
+
 const JOB_COLOR: Record<string, string> = {
   'Police officer': '#243b6b',
   Firefighter: '#c8463d',
@@ -118,6 +170,8 @@ export function createSimOverlay(): SimOverlay {
   let prepared: Prepared[] = [];
   let walkers: Walker[] | null = null;
   let walk: Uint8Array | null = null;
+  let road: Uint8Array | null = null;
+  let ambient: Ambient | null = null;
   const bfsCache = new Map<number, Int32Array>();
   const front = { gx: 0, gy: 0, dx: 1, dy: 0 };
 
@@ -148,12 +202,9 @@ export function createSimOverlay(): SimOverlay {
     return best;
   }
 
-  /** Parent pointers of a BFS over the walkable grid from `root` (-2 = unreached, -1 = root). */
-  function bfs(m: Model, root: number): Int32Array {
-    let par = bfsCache.get(root);
-    if (par) return par;
-    const g = walkGrid(m);
-    par = new Int32Array(m.W * m.H).fill(-2);
+  /** Parent pointers of a BFS over a grid from `root` (-2 = unreached, -1 = root). */
+  function bfsOn(m: Model, g: Uint8Array, root: number): { par: Int32Array; reached: number } {
+    const par = new Int32Array(m.W * m.H).fill(-2);
     const q = new Int32Array(m.W * m.H);
     let qh = 0, qt = 0;
     par[root] = -1;
@@ -166,6 +217,14 @@ export function createSimOverlay(): SimOverlay {
       if (y > 0 && g[i - m.W] && par[i - m.W] === -2) { par[i - m.W] = i; q[qt++] = i - m.W; }
       if (y < m.H - 1 && g[i + m.W] && par[i + m.W] === -2) { par[i + m.W] = i; q[qt++] = i + m.W; }
     }
+    return { par, reached: qt };
+  }
+
+  /** Cached BFS over the walkable grid (incidents and commuters). */
+  function bfs(m: Model, root: number): Int32Array {
+    let par = bfsCache.get(root);
+    if (par) return par;
+    par = bfsOn(m, walkGrid(m), root).par;
     bfsCache.set(root, par);
     return par;
   }
@@ -315,12 +374,290 @@ export function createSimOverlay(): SimOverlay {
     return front;
   }
 
+  // ── ambient traffic and strollers ─────────────────────────────────────────
+  function roadGrid(m: Model): Uint8Array {
+    if (road) return road;
+    road = new Uint8Array(m.W * m.H);
+    for (let i = 0; i < road.length; i++) road[i] = m.tile[i] === T_ROAD ? 1 : 0;
+    return road;
+  }
+
+  /**
+   * Closed loops on a grid: from one of a few hubs, a seeded random walk (mostly straight, turning at
+   * junctions, only turning back at dead ends) and then the shortest way home. Pure function of the
+   * model, so every frame, reload and reel agrees.
+   */
+  function makeRoutes(m: Model, g: Uint8Array, count: number, salt: number, lenMin: number, lenMax: number, bias: number): Route[] {
+    const W = m.W, H = m.H;
+    const cands: number[] = [];
+    for (let i = 0; i < g.length; i++) if (g[i]) cands.push(i);
+    if (cands.length < 8) return [];
+    // hubs lean towards the town centre (the plaza), so downtown streets are the busy ones
+    let sx = 0, sy = 0, sn = 0;
+    for (let i = 0; i < m.tile.length; i++) if (m.tile[i] === T_PLAZA) { sx += i % W; sy += (i / W) | 0; sn++; }
+    const mx = sn ? sx / sn : W / 2, my = sn ? sy / sn : H / 2;
+    const away = (i: number) => (i % W - mx) ** 2 + (Math.floor(i / W) - my) ** 2;
+    const pool: { root: number; par: Int32Array }[] = [];
+    for (let k = 0; k < HUBS * 4 && pool.length < HUBS; k++) {
+      let root = cands[Math.floor(hash(k, salt, 5) * cands.length)];
+      for (let j = 1; j < bias; j++) {
+        const c = cands[Math.floor(hash(k, salt, 5 + j) * cands.length)];
+        if (away(c) < away(root)) root = c;
+      }
+      if (pool.some((p) => p.root === root)) continue;
+      const { par, reached } = bfsOn(m, g, root);
+      if (reached >= Math.min(40, cands.length * 0.5)) pool.push({ root, par });
+    }
+    const out: Route[] = [];
+    if (!pool.length) return out;
+    const nb: number[] = [];
+    for (let id = 0; id < count; id++) {
+      const { root, par } = pool[id % pool.length];
+      const len = lenMin + Math.floor(hash(id, salt, 11) * (lenMax - lenMin));
+      const walk: number[] = [root];
+      let prev = -1, cur = root;
+      for (let s = 0; s < len; s++) {
+        const x = cur % W, y = (cur / W) | 0;
+        nb.length = 0;
+        if (x > 0 && g[cur - 1]) nb.push(cur - 1);
+        if (x < W - 1 && g[cur + 1]) nb.push(cur + 1);
+        if (y > 0 && g[cur - W]) nb.push(cur - W);
+        if (y < H - 1 && g[cur + W]) nb.push(cur + W);
+        if (!nb.length) break;
+        let pick = -1;
+        if (prev >= 0) {
+          const px = prev % W, py = (prev / W) | 0;
+          const sx = 2 * x - px, sy = 2 * y - py;
+          const straight = sx >= 0 && sy >= 0 && sx < W && sy < H && g[sy * W + sx] ? sy * W + sx : -1;
+          if (straight >= 0 && hash(id, s, salt + 17) < 0.62) pick = straight;
+          else {
+            const rest = nb.filter((c) => c !== prev);
+            if (rest.length) pick = rest[Math.floor(hash(id, s, salt + 29) * rest.length)];
+          }
+        }
+        if (pick < 0) pick = nb[Math.floor(hash(id, s, salt + 41) * nb.length)];
+        prev = cur;
+        cur = pick;
+        walk.push(cur);
+      }
+      const home = cur === root ? Int32Array.of(root) : pathToRoot(par, cur);
+      if (!home) continue;
+      const path = walk.concat(Array.from(home.subarray(1, Math.max(1, home.length - 1))));
+      if (path[path.length - 1] === path[0]) path.pop();
+      if (path.length < 6) continue;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const i of path) {
+        const tx = i % W, ty = (i / W) | 0;
+        const wx = (tx - ty) * HW, wy = (tx + ty + 1) * HH;
+        if (wx < minX) minX = wx;
+        if (wx > maxX) maxX = wx;
+        if (wy < minY) minY = wy;
+        if (wy > maxY) maxY = wy;
+      }
+      out.push({ path: Int32Array.from(path), n: path.length, minX, maxX, minY, maxY });
+    }
+    return out;
+  }
+
+  function buildAmbient(m: Model): Ambient {
+    const roads = roadGrid(m), foot = walkGrid(m);
+    let nRoad = 0, nFoot = 0;
+    for (let i = 0; i < roads.length; i++) { nRoad += roads[i]; nFoot += foot[i]; }
+    const carRoutes = makeRoutes(m, roads, clamp(Math.round(nRoad / 8), 8, MAX_CARS), 301, 30, 90, 4);
+    const folkRoutes = makeRoutes(m, foot, clamp(Math.round(nFoot / 5), 12, MAX_STROLLERS), 727, 25, 80, 3);
+    const GOLD = 0.6180339887;
+    const cars: AmbientCar[] = carRoutes.map((route, id) => {
+      const k = hash(id, 3, 88);
+      const spec = k < 0.38 ? 'sedan' : k < 0.62 ? 'hatch' : k < 0.78 ? 'van' : k < 0.9 ? 'taxi' : 'bus';
+      const pal = spec === 'van' ? VAN_COLORS : spec === 'bus' ? BUS_COLORS : CAR_COLORS;
+      return {
+        id, route, spec, body: spec === 'taxi' ? '#f1c40f' : pal[Math.floor(hash(id, 4, 88) * pal.length)],
+        phase: hash(id, 5, 88) * route.n, rank: (id * GOLD) % 1,
+      };
+    });
+    const folk: Stroller[] = folkRoutes.map((route, id) => ({
+      id, route, speed: 0.34 + hash(id, 6, 89) * 0.3, phase: hash(id, 7, 89) * route.n, rank: (id * GOLD) % 1,
+      lane: (hash(id, 8, 89) < 0.5 ? -1 : 1) * (0.3 + hash(id, 9, 89) * 0.1),
+      color: FOLK_COLORS[Math.floor(hash(id, 10, 89) * FOLK_COLORS.length)],
+      skin: SKINS[Math.floor(hash(id, 11, 89) * SKINS.length)],
+      size: 0.86 + hash(id, 12, 89) * 0.24,
+    }));
+    return { cars, folk };
+  }
+
+  /**
+   * Position and heading `d` tiles along a closed route. The heading blends with the neighbouring
+   * segments around every tile centre, so a car sweeps through a corner instead of snapping round it.
+   */
+  function sample(m: Model, r: Route, d: number, o: Item) {
+    const n = r.n, W = m.W, P = r.path;
+    const k = Math.floor(d) % n, f = d - Math.floor(d);
+    const a = P[k], b = P[(k + 1) % n], pr = P[(k + n - 1) % n], nx = P[(k + 2) % n];
+    const ax = a % W, ay = (a / W) | 0, bx = b % W, by = (b / W) | 0;
+    const cdx = bx - ax, cdy = by - ay;
+    const w0 = Math.max(0, 0.5 - f), w2 = Math.max(0, f - 0.5), w1 = 1 - w0 - w2;
+    let dx = (ax - (pr % W)) * w0 + cdx * w1 + ((nx % W) - bx) * w2;
+    let dy = (ay - ((pr / W) | 0)) * w0 + cdy * w1 + (((nx / W) | 0) - by) * w2;
+    const l = Math.hypot(dx, dy);
+    if (l < 0.2) { dx = cdx; dy = cdy; } else { dx /= l; dy /= l; }
+    o.gx = ax + 0.5 + cdx * f;
+    o.gy = ay + 0.5 + cdy * f;
+    o.dx = dx;
+    o.dy = dy;
+  }
+
+  const items: Item[] = [];
+  let nItems = 0;
+  function nextItem(): Item {
+    if (nItems === items.length) items.push({ depth: 0, car: null, st: null, gx: 0, gy: 0, dx: 0, dy: 0, a: 1 });
+    return items[nItems++];
+  }
+
+  function drawAmbient(ctx: CanvasRenderingContext2D, m: Model, sky: SkyState, t: number, S: number, v: View, o: DrawOpts) {
+    if (S < 0.3) return;
+    if (!ambient) ambient = buildAmbient(m);
+    const { cars, folk } = ambient;
+    const secs = t / 1000;
+    const carDens = Math.max(0.07, curveAt(CAR_CURVE, sky.hour));
+    const footDens = Math.max(0.07, curveAt(FOOT_CURVE, sky.hour));
+    const speed = o.reel ? CAR_SPEED_REEL : CAR_SPEED;
+    const hitsView = (r: Route, pad: number) => r.maxX + pad >= v.minX && r.minX - pad <= v.maxX && r.maxY + pad >= v.minY && r.minY - pad <= v.maxY;
+    nItems = 0;
+
+    for (const c of cars) {
+      const act = clamp((carDens - c.rank) * 10, 0, 1);
+      if (act <= 0 || !hitsView(c.route, 60)) continue;
+      const it = nextItem();
+      sample(m, c.route, (secs * speed + c.phase) % c.route.n, it);
+      // right-hand traffic, same side as the incident vehicles
+      it.gx -= it.dy * 0.15;
+      it.gy += it.dx * 0.15;
+      const wx = (it.gx - it.gy) * HW, wy = (it.gx + it.gy) * HH;
+      if (wx < v.minX - 60 || wx > v.maxX + 60 || wy < v.minY - 60 || wy > v.maxY + 80) { nItems--; continue; }
+      it.car = c; it.st = null; it.a = act; it.depth = it.gx + it.gy;
+    }
+    // two cars crossing a junction (or merging) shouldn't sit on top of each other: the later one yields
+    const nCars = nItems;
+    for (let i = 0; i < nCars; i++)
+      for (let j = i + 1; j < nCars; j++) {
+        const A = items[i], B = items[j];
+        const d = Math.hypot(A.gx - B.gx, A.gy - B.gy);
+        if (d >= 0.34) continue;
+        const loser = A.car!.id < B.car!.id ? A : B;
+        loser.a *= clamp((d - 0.14) / 0.2, 0, 1);
+      }
+
+    if (S >= 0.45) {
+      for (const w of folk) {
+        const act = clamp((footDens - w.rank) * 10, 0, 1);
+        if (act <= 0 || !hitsView(w.route, 40)) continue;
+        const it = nextItem();
+        sample(m, w.route, (secs * w.speed + w.phase) % w.route.n, it);
+        // on the pavement edge; wanders in toward the middle across plazas
+        const here = m.tile[Math.floor(it.gy) * m.W + Math.floor(it.gx)];
+        const lane = here === T_PLAZA ? w.lane * (0.35 + 0.35 * Math.sin(secs * 0.3 + w.phase)) : w.lane;
+        it.gx -= it.dy * lane;
+        it.gy += it.dx * lane;
+        const wx = (it.gx - it.gy) * HW, wy = (it.gx + it.gy) * HH;
+        if (wx < v.minX - 20 || wx > v.maxX + 20 || wy < v.minY - 20 || wy > v.maxY + 40) { nItems--; continue; }
+        it.car = null; it.st = w; it.a = act; it.depth = it.gx + it.gy;
+      }
+    }
+    if (!nItems) return;
+    const order = items.slice(0, nItems).sort((a, b) => a.depth - b.depth);
+    const dark = sky.darkness;
+    const lit = sky.glow > 0.08;
+    let repainted = 0;
+    const seen = new Set<number>();
+    for (const it of order) {
+      const wx = (it.gx - it.gy) * HW, wy = (it.gx + it.gy) * HH;
+      ctx.globalAlpha = it.a;
+      if (it.car) {
+        const spec = AMBIENT_SPECS[it.car.spec];
+        const sp: CarSpec = { ...spec, body: it.car.body };
+        const ang = Math.atan2(it.dy, it.dx);
+        drawCar(ctx, sky, wx, wy, ang, sp, t, false);
+        if (lit) drawLamps(ctx, wx, wy, ang, sp, sky.glow);
+      } else if (it.st) {
+        const w = it.st;
+        const bob = Math.abs(Math.sin(t / 190 + w.phase * 3)) * 0.9 * w.size;
+        const body = mix(w.color, sky.palette.skyTop, 0.4 * dark);
+        ctx.fillStyle = alpha(sky.palette.edge, 0.2);
+        ctx.beginPath();
+        ctx.ellipse(wx, wy, 2.6, 1.2, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = body;
+        ctx.fillRect(wx - 1.5, wy - (6 - bob) * w.size, 3, 5.2 * w.size);
+        ctx.fillStyle = mix(w.skin, sky.palette.skyTop, 0.4 * dark);
+        ctx.beginPath();
+        ctx.arc(wx, wy - (7.7 - bob) * w.size, 1.7, 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (S < 0.5) continue;
+      const key = Math.floor(it.gy) * m.W + Math.floor(it.gx);
+      if (it.car) {
+        if (repainted < 30 && it.a > 0.4) { repainted++; o.front(Math.floor(it.gx), Math.floor(it.gy), wx, wy - 8, it.car.spec === 'bus' ? 30 : 22, 24); }
+      } else if (S >= 0.6 && repainted < 30 && !seen.has(key)) {
+        seen.add(key);
+        repainted++;
+        o.front(Math.floor(it.gx), Math.floor(it.gy), wx, wy - 5, 6, 9);
+      }
+    }
+  }
+
+  /** Headlights, their pool of light on the road, and the red tail lights; brighter the darker it is. */
+  function drawLamps(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, s: CarSpec, k: number) {
+    const p: Proj = { cx: x, cy: y, s: 64 * 1.3 };
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const px = (u: number, w: number) => projX(p, u * ca - w * sa, u * sa + w * ca);
+    const py = (u: number, w: number, z: number) => projY(p, u * ca - w * sa, u * sa + w * ca, z);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // pool of light ahead
+    const bx = px(s.hl + 0.3, 0), by = py(s.hl + 0.3, 0, 0);
+    ctx.translate(bx, by);
+    ctx.scale(1, 0.5);
+    const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, 20);
+    pool.addColorStop(0, alpha('#ffe7a0', 0.34 * k));
+    pool.addColorStop(1, alpha('#ffe7a0', 0));
+    ctx.fillStyle = pool;
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const side of [-1, 1]) {
+      const hx = px(s.hl, side * s.hw * 0.6), hy = py(s.hl, side * s.hw * 0.6, 0.05);
+      const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 8);
+      g.addColorStop(0, alpha('#fff3c8', 0.85 * k));
+      g.addColorStop(1, alpha('#fff3c8', 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 8, 0, TAU);
+      ctx.fill();
+      const tx = px(-s.hl, side * s.hw * 0.6), ty = py(-s.hl, side * s.hw * 0.6, 0.06);
+      const r = ctx.createRadialGradient(tx, ty, 0, tx, ty, 5);
+      r.addColorStop(0, alpha('#ff3b30', 0.7 * k));
+      r.addColorStop(1, alpha('#ff3b30', 0));
+      ctx.fillStyle = r;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 5, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = alpha('#ff5a4d', 0.9 * k);
+      ctx.fillRect(tx - 0.8, ty - 0.8, 1.6, 1.6);
+    }
+    ctx.restore();
+  }
+
   // ── drawing: public ───────────────────────────────────────────────────────
   function draw(ctx: CanvasRenderingContext2D, sky: SkyState, t: number, S: number, v: View, o: DrawOpts) {
     const m = model;
     if (!m) return;
     const inView = (x: number, y: number, pad: number) => x > v.minX - pad && x < v.maxX + pad && y > v.minY - pad && y < v.maxY + pad;
 
+    drawAmbient(ctx, m, sky, t, S, v, o);
     if (!o.reel && S >= 0.45) drawWalkers(ctx, m, sky, S, v, o);
 
     if (!prepared.length) return;
@@ -562,11 +899,21 @@ export function createSimOverlay(): SimOverlay {
     cabin: [number, number, number];
     bar: boolean;
     ladder?: boolean;
+    /** a band of side windows along the body (buses) */
+    band?: boolean;
   }
   const SPECS: Record<VehicleKind, CarSpec> = {
     engine: { hl: 0.27, hw: 0.1, h: 0.2, body: '#c8463d', accent: '#f1e6c8', cabin: [0.04, 0.25, 0.09], bar: true, ladder: true },
     police: { hl: 0.2, hw: 0.085, h: 0.12, body: '#f4f4f2', accent: '#2c4f8f', cabin: [-0.1, 0.08, 0.08], bar: true },
     ambulance: { hl: 0.24, hw: 0.1, h: 0.23, body: '#f6f4f0', accent: '#d63a3a', cabin: [0.1, 0.24, 0.0], bar: true },
+  };
+
+  const AMBIENT_SPECS: Record<string, CarSpec> = {
+    sedan: { hl: 0.17, hw: 0.075, h: 0.085, body: '#888', accent: null, cabin: [-0.07, 0.09, 0.055], bar: false },
+    hatch: { hl: 0.15, hw: 0.072, h: 0.09, body: '#888', accent: null, cabin: [-0.09, 0.1, 0.06], bar: false },
+    van: { hl: 0.2, hw: 0.085, h: 0.16, body: '#888', accent: null, cabin: [-0.18, 0.16, 0], bar: false },
+    taxi: { hl: 0.17, hw: 0.075, h: 0.085, body: '#f1c40f', accent: '#1f1f1f', cabin: [-0.07, 0.09, 0.055], bar: true },
+    bus: { hl: 0.3, hw: 0.095, h: 0.19, body: '#888', accent: '#f4f1e6', cabin: [-0.28, 0.28, 0], bar: false, band: true },
   };
 
   function drawVehicle(ctx: CanvasRenderingContext2D, sky: SkyState, kind: VehicleKind, x: number, y: number, ang: number, t: number, flash: boolean, seed: number) {
@@ -606,6 +953,7 @@ export function createSimOverlay(): SimOverlay {
       const ac = material(sky, s.accent);
       prism(ctx, p, 0, 0, ca, sa, s.hl + 0.004, s.hw + 0.004, 0.06, 0.08, ac);
     }
+    if (s.band) prism(ctx, p, 0, 0, ca, sa, s.hl - 0.02, s.hw + 0.003, s.h * 0.5, s.h * 0.86, glass);
     const [c0, c1, ch] = s.cabin;
     const co = (c0 + c1) / 2;
     const top = s.h;
@@ -789,6 +1137,8 @@ export function createSimOverlay(): SimOverlay {
       walk = null;
       bfsCache.clear();
       walkers = null;
+      road = null;
+      ambient = null;
       prepare();
     },
     setIncidents(list) {
