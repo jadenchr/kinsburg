@@ -274,7 +274,7 @@ try {
   await runSchedules();
   ({ data } = await loadCity());
   ok(data.residents.length === 54, 'second poll adds nobody (comments remembered)', data.residents.length);
-  ok(replyHits.length === 2 && replyHits[0].message.includes('\n') && /Follow/.test(replyHits[0].message) && /@(new_person1|second\.person|third_person)\b/.test(replyHits[0].message), 'one welcome reply greeting them by @username, then Instagram blocks the second', replyHits);
+  ok(replyHits.length === 2 && replyHits[0].message.includes('\n') && /@(new_person1|second\.person|third_person)\b/.test(replyHits[0].message) && replyHits[0].message.split('\n')[0].replace(/@\S+/, '') !== replyHits[1].message.split('\n')[0].replace(/@\S+/, ''), 'two-line welcomes greeting them by @username, a different one each time; Instagram blocks the second', replyHits);
   let pace = (await (await admin('/admin/replies', { dryRun: true })).json()).pace;
   ok(!!pace?.pausedUntil && pace.lastPauseHours === 6, 'a comment block pauses replies for 6 hours', pace);
   ok(replyHits.length === 2, 'no reply attempts while paused (the second poll stayed quiet)', replyHits.length);

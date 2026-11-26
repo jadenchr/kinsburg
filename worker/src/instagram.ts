@@ -2,7 +2,7 @@
 // login, or graph.instagram.com with an Instagram Login token): comment poller, comments webhook,
 // optional public replies, token refresh (Instagram Login tokens only). IG_API_BASE is configurable so tests can
 // point at a local mock.
-import { matchesMoveIn } from '../../shared/residents-format.mjs';
+import { JOBS, matchesMoveIn } from '../../shared/residents-format.mjs';
 import { eventStmt, joinMany, writeSnapshots, healSnapshots, type JoinResult, type JoinSource } from './city';
 import { verifyMetaSignature } from './crypto';
 import { closeDuePolls, handleDms, privateReply, processTownComments } from './town';
@@ -90,37 +90,92 @@ export class IgClient {
 
 // Line 1 of the welcome reply. Links in Instagram comments aren't tappable, so the house link
 // lives in the bio; {n} is the resident number.
-const REPLIES = [
-  "Welcome to Kinsburg, @{h}! 🏡 You're neighbour #{n}",
-  'You live here now, @{h} ✨ House #{n}',
-  'Keys are ready, @{h} 🔑 House #{n} is yours',
-  'Built! 🏠 Welcome home, @{h} (#{n})',
-  'Your house is up, @{h} 🏡 #{n}',
-  'Fresh paint, new neighbour: @{h} 🎨 #{n}',
+// Welcome replies: 30 complete two-line messages, tailored with the person's @handle ({h}), house
+// number ({n}) and job ({job}), dealt from a shuffled deck so nobody in a row gets the same text
+// (Instagram treats many near-identical replies as spam). All 30 go out once per shuffle.
+const WELCOMES = [
+  'Welcome to Kinsburg, @{h}! 🏡\nHouse #{n} is all yours',
+  "Keys are ready, @{h} 🔑\nYou're neighbour #{n}, our newest {job}",
+  'You live here now, @{h} ✨\nKinsburg just got a new {job}',
+  'Fresh paint, new neighbour 🎨\nWelcome home, @{h} (#{n})',
+  'The lights are on at house #{n} 💡\nWelcome, @{h}!',
+  "@{h} just moved in 📦\nKinsburg's newest {job}, house #{n}",
+  'Your house is up, @{h} 🏠\nFollow to watch your street light up 🌙',
+  'Welcome to the neighbourhood, @{h} 👋\nHouse #{n}, {job} on duty',
+  'Moving day for @{h} 🚚\nHouse #{n} is ready',
+  "A new window just lit up ✨\nThat one's yours, @{h} (#{n})",
+  "Kinsburg says hi, @{h} 💛\nYou're resident #{n}",
+  "The doormat's out, @{h} 🏡\nWelcome to house #{n}",
+  'Built and ready, @{h} 🛠️\nOur newest {job} lives at #{n}',
+  'Population +1 📈\nWelcome, @{h}! House #{n}',
+  '@{h}, your street just got cosier 🌷\nHouse #{n} is yours',
+  'Welcome home, @{h} 🔑\nFollow to catch your house in a Reel 🎬',
+  'The neighbours are waving, @{h} 👋\nResident #{n}, welcome!',
+  "Your chimney's already puffing, @{h} 🏠\nWelcome to #{n}",
+  'A new {job} in town 🎉\nWelcome to Kinsburg, @{h}',
+  'Housewarming for @{h} 🎈\nHouse #{n} is open',
+  "You're officially a Kinsburger, @{h} 🏙️\nResident #{n}",
+  'Mailbox labelled, @{h} 📬\nWelcome to house #{n}',
+  "Fresh keys for @{h} 🗝️\nKinsburg's newest {job}",
+  'Your porch light is on, @{h} 💡\nFollow to see the town grow ✨',
+  'Welcome aboard, @{h} 🌟\nHouse #{n}, right in the neighbourhood',
+  "A new {job} moved in 🏡\nGlad you're here, @{h} (#{n})",
+  'The town just grew by one: @{h} 🌱\nHouse #{n} is yours',
+  'You have a street address now, @{h} 🏡\nResident #{n}',
+  'Unpacking boxes at #{n} 📦\nWelcome to Kinsburg, @{h}',
+  "Hello neighbour @{h} 🙌\nYou're #{n} in Kinsburg",
 ];
 
-// For a resident who comments MOVE IN again.
+// For a resident who comments MOVE IN again (no job: the comment only tells us they're here).
 const ALREADY_HERE = [
-  'You already live here, @{h} ✨ #{n}',
-  'Still home sweet home, @{h} 🏡 #{n}',
-  'Your keys still work, @{h} 🔑 #{n}',
+  'You already live here, @{h} ✨\nHouse #{n} is waiting for you',
+  'Still home sweet home, @{h} 🏡\nHouse #{n}',
+  'Your keys still work, @{h} 🔑\nHouse #{n}',
+  "Already a neighbour, @{h} 😄\nYou're resident #{n}",
+  "No need to move twice, @{h} 😉\nHouse #{n} is still yours",
+  'Welcome back, @{h} 💛\nHouse #{n} missed you',
+  'Still here, still yours, @{h} 🏡\nResident #{n}',
+  "You're in already, @{h} 🙌\nFind house #{n} on kinsburg.com",
 ];
 
-// A gentle reason to follow, never a condition (Instagram forbids rewarding follows).
-const FOLLOW_NUDGES = [
-  'Follow to watch your street light up 🌙',
-  'Follow to catch your house in a Reel 🎬',
-  'Follow to see the town grow ✨',
-];
+/** Seeded Fisher-Yates: the deck order for one shuffle of `n` cards. */
+function shuffled(n: number, seed: number): number[] {
+  const a = Array.from({ length: n }, (_, i) => i);
+  let x = seed >>> 0 || 1;
+  for (let i = n - 1; i > 0; i--) {
+    x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0;
+    const j = x % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
-function replyText(_env: Env, handle: string, n: number | undefined, already = false): string {
-  const i = n ?? handle.length;
-  const list = already ? ALREADY_HERE : REPLIES;
-  const greeting = list[i % list.length].replace('{h}', handle);
-  // without a resident number, drop the number part ("You're neighbour #{n}", "(#{n})", "House #{n} is yours")
-  const line1 = n ? greeting.replace('{n}', String(n)) : greeting.replace(/\s*(You're neighbour |House |\()?#\{n\}( is yours|\))?/, '').trim();
-  const nudge = FOLLOW_NUDGES[Math.floor(i / REPLIES.length) % FOLLOW_NUDGES.length];
-  return `${line1}\n${nudge}`;
+/** The next card from a shuffled deck kept in meta (`deck_<name>` = "<shuffle>:<next>"). */
+async function nextCard(env: Env, name: string, size: number): Promise<number> {
+  const key = `deck_${name}`;
+  const row = await env.DB.prepare('SELECT value FROM meta WHERE key = ?1').bind(key).first<{ value: string }>();
+  let [round, next] = String(row?.value ?? '0:0').split(':').map((v) => Number(v) | 0);
+  if (next >= size) { round++; next = 0; }
+  const card = shuffled(size, 0x9e3779b9 ^ (round * 2654435761) ^ size)[next];
+  await env.DB.prepare('INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, `${round}:${next + 1}`).run();
+  return card;
+}
+
+/** Fill a welcome template (pick one whose parts are all known; see replyText). */
+export function fillWelcome(tpl: string, handle: string, n: number | undefined, job: string | undefined): string {
+  return tpl.split('{h}').join(handle).split('{n}').join(String(n ?? '')).split('{job}').join(job ?? '');
+}
+
+async function replyText(env: Env, handle: string, n: number | undefined, already = false, jobIndex?: number): Promise<string> {
+  const list = already ? ALREADY_HERE : WELCOMES;
+  const job = jobIndex !== undefined && jobIndex !== null ? JOBS[jobIndex] : undefined;
+  // a template needing a number or job we don't have hands over to the next one in the list that doesn't
+  const fits = (t: string) => (n || !t.includes('{n}')) && (job || !t.includes('{job}'));
+  const card = await nextCard(env, already ? 'already' : 'welcome', list.length);
+  let tpl = list[card];
+  for (let k = 1; !fits(tpl) && k < list.length; k++) tpl = list[(card + k) % list.length];
+  if (!fits(tpl)) tpl = 'Welcome to Kinsburg, @{h} 🏡\nFollow to see the town grow ✨';
+  return fillWelcome(tpl, handle, n, job);
 }
 
 /**
@@ -194,7 +249,7 @@ export async function processComments(env: Env, comments: IgComment[], source: J
     if (replyOn && r.status === 'joined' && replyBudget > 0) {
       try {
         if (report.replies) await humanPause();
-        await client.post(`${fresh[i].id}/replies`, { message: replyText(env, r.handle, r.number) });
+        await client.post(`${fresh[i].id}/replies`, { message: await replyText(env, r.handle, r.number, false, r.row?.[3]) });
         replied.add(fresh[i].id);
         report.replies++;
         replyBudget--;
@@ -509,12 +564,12 @@ export async function replyToMissed(env: Env, comments: IgComment[], client: IgC
   if (!moveIns.length) return out;
   const ids = moveIns.map((c) => c.id).slice(0, 90);
   const rows = (await env.DB.prepare(
-    `SELECT p.comment_id, p.handle, p.result, r.number FROM processed_comments p LEFT JOIN residents r ON r.handle = p.handle
+    `SELECT p.comment_id, p.handle, p.result, r.number, r.job FROM processed_comments p LEFT JOIN residents r ON r.handle = p.handle
      WHERE p.replied = 0 AND p.result IN ('joined', 'exists') AND p.comment_id IN (${ids.map(() => '?').join(',')})`,
-  ).bind(...ids).all<{ comment_id: string; handle: string; result: string; number: number | null }>()).results;
+  ).bind(...ids).all<{ comment_id: string; handle: string; result: string; number: number | null; job: number | null }>()).results;
   out.candidates = rows.length;
   for (const row of rows.slice(0, budget)) {
-    const text = replyText(env, row.handle, row.number ?? undefined, row.result === 'exists');
+    const text = await replyText(env, row.handle, row.number ?? undefined, row.result === 'exists', row.job ?? undefined);
     if (dryRun) { out.planned.push({ handle: row.handle, text }); continue; }
     try {
       if (out.replied) await humanPause();
