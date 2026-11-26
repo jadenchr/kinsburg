@@ -46,8 +46,9 @@ export const HOME_LIMIT = { villa: 100, skyscraper: 100 };
  */
 export function parseHomeCommand(text) {
   const t = String(text ?? '').normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ').trim();
-  if (/(^| )villas?( |$)/.test(t)) return 'villa';
-  if (/(^| )sky ?scrapers?( |$)/.test(t)) return 'skyscraper';
+  // stretched and misspelled too: "Villaaa", "vila", "mansion"; "Skycraper", "sky scrapper"
+  if (/(^| )(vill*a+s?|mansions?)( |$)/.test(t)) return 'villa';
+  if (/(^| )sky ?s?c?rap+e*r+s?( |$)/.test(t)) return 'skyscraper';
   if (/(^| )towers?( |$)/.test(t) && t.split(' ').length <= 6) return 'skyscraper';
   return null;
 }

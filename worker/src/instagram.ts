@@ -629,20 +629,23 @@ async function metaGet(env: Env, keys: string[]): Promise<Record<string, string>
 const metaSet = (env: Env, key: string, value: string) =>
   env.DB.prepare('INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(key, value);
 
-/** The current pacing window (IG_REPLY_WINDOW_SECONDS, default 10 minutes: one per comment scan). */
-const windowKey = (env: Env) => String(Math.floor(Date.now() / (intVar(env.IG_REPLY_WINDOW_SECONDS, 600) * 1000)));
+/** Pacing window length (IG_REPLY_WINDOW_SECONDS, default 10 minutes: one per comment scan). It starts
+ *  with the first reply sent in it, so a burst can never straddle two windows. */
+const windowMs = (env: Env) => intVar(env.IG_REPLY_WINDOW_SECONDS, 600) * 1000;
 
 export async function replyStatus(env: Env) {
   const m = await metaGet(env, ['replies_paused_until', 'replies_pause_hours', 'replies_day', 'replies_count', 'replies_window']);
   const today = new Date().toISOString().slice(0, 10);
   const pausedUntil = m.replies_paused_until && Date.parse(m.replies_paused_until) > Date.now() ? m.replies_paused_until : null;
-  const [wk, wn] = String(m.replies_window ?? '').split(':');
+  const [ws, wn] = String(m.replies_window ?? '').split(':');
+  const windowOpen = Number(ws) > 0 && Date.now() - Number(ws) < windowMs(env);
   return {
     pausedUntil,
     lastPauseHours: Number(m.replies_pause_hours ?? 0),
     today: m.replies_day === today ? Number(m.replies_count ?? 0) : 0,
     /** replies sent in the current pacing window, by every sender (welcomes, catch-ups, queue, announcements) */
-    thisWindow: wk === windowKey(env) ? Number(wn ?? 0) : 0,
+    thisWindow: windowOpen ? Number(wn ?? 0) : 0,
+    windowStart: windowOpen ? Number(ws) : 0,
     perRun: intVar(env.IG_REPLY_MAX_PER_RUN, 2),
     perDay: intVar(env.IG_REPLY_MAX_PER_DAY, 80),
   };
@@ -661,7 +664,7 @@ export async function noteReplies(env: Env, n: number) {
   const stmts = [
     metaSet(env, 'replies_day', today),
     metaSet(env, 'replies_count', String(s.today + n)),
-    metaSet(env, 'replies_window', `${windowKey(env)}:${s.thisWindow + n}`),
+    metaSet(env, 'replies_window', `${s.windowStart || Date.now()}:${s.thisWindow + n}`),
   ];
   // Replies are flowing again after a pause ended: the next block starts short. Not while a pause
   // set in this same run is active.

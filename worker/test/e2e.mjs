@@ -13,7 +13,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cityDataFromCompact, decodeShards, matchesMoveIn, planRequests } from '../../shared/residents-format.mjs';
+import { cityDataFromCompact, decodeShards, matchesMoveIn, parseHomeCommand, planRequests } from '../../shared/residents-format.mjs';
 import { validateCityData } from '../../shared/city-layout.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -218,6 +218,8 @@ try {
     'Please me', 'Can I be the mayor', 'the movie in theaters tonight was great', 'I dont need a house'];
   ok(joinYes.every(matchesMoveIn), 'every way of asking for a house joins', joinYes.filter((t) => !matchesMoveIn(t)));
   ok(!joinNo.some(matchesMoveIn), 'ordinary comments and refusals do not join', joinNo.filter(matchesMoveIn));
+  const homeAsks = { Villaaa: 'villa', 'vila pls': 'villa', 'I want to live in a mansion please': 'villa', Skycraper: 'skyscraper', 'Sky scraper': 'skyscraper', skyscrapper: 'skyscraper', TOWER: 'skyscraper' };
+  ok(Object.entries(homeAsks).every(([t, k]) => parseHomeCommand(t) === k) && !['vanilla', 'village people', 'skyline'].some(parseHomeCommand), 'villa and skyscraper asks are understood, stretched or misspelled', Object.entries(homeAsks).filter(([t, k]) => parseHomeCommand(t) !== k));
 
   console.log('\ncity API');
   let { manifest, data } = await loadCity();
