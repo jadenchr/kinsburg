@@ -5,6 +5,8 @@ export declare const FORMAT: 1;
 export declare const DEFAULT_SHARD_SIZE: number;
 export declare const DEFAULT_PACK_SIZE: number;
 export declare const JOBS: readonly Job[];
+/** Random jobs for new residents come from JOBS[0..BASE_JOBS-1]; the rest are given on request. */
+export declare const BASE_JOBS: number;
 export declare const PERKS: readonly Perk[];
 export declare const PERK_BIT: Readonly<Record<Perk, number>>;
 

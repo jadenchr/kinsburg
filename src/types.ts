@@ -20,6 +20,25 @@ export const JOBS = [
   'Gardener', 'Firefighter', 'Tailor', 'Shopkeeper', 'Beekeeper', 'Photographer',
   'Lighthouse keeper', 'Bus driver', 'Doctor', 'Coder', 'Architect', 'Potter',
   'Police officer', 'Vet', // append-only: a resident's stored job is an index into this list
+  // asked-for jobs: mirror of shared/residents-format.mjs (same order)
+  'Singer', 'Dancer', 'Actor', 'DJ', 'Rapper', 'Producer', 'Pianist', 'Guitarist', 'Drummer', 'Violinist',
+  'Composer', 'Choreographer', 'Comedian', 'Magician', 'Film director', 'Animator', 'Illustrator',
+  'Graphic designer', 'Designer', 'Fashion designer', 'Model', 'Influencer', 'Content creator', 'Streamer',
+  'Esports player', 'Radio host', 'News anchor', 'Journalist', 'Writer', 'Author', 'Poet', 'Editor',
+  'Translator', 'Videographer', 'Sculptor', 'Calligrapher', 'Tattoo artist', 'Surgeon', 'Dentist',
+  'Pharmacist', 'Paramedic', 'Midwife', 'Psychologist', 'Therapist', 'Physiotherapist', 'Optometrist',
+  'Dietitian', 'Personal trainer', 'Yoga teacher', 'Athlete', 'Footballer', 'Basketball player', 'Cricketer',
+  'Tennis player', 'Swimmer', 'Boxer', 'Coach', 'Referee', 'Engineer', 'Scientist', 'Data scientist',
+  'Game developer', 'Astronaut', 'Astronomer', 'Biologist', 'Chemist', 'Physicist', 'Mathematician',
+  'Marine biologist', 'Geologist', 'Archaeologist', 'Historian', 'Inventor', 'Robotics engineer', 'Lawyer',
+  'Judge', 'Detective', 'Accountant', 'Banker', 'Economist', 'Entrepreneur', 'CEO', 'Manager', 'Marketer',
+  'Salesperson', 'Consultant', 'Real estate agent', 'Professor', 'Principal', 'Tutor', 'Social worker',
+  'Soldier', 'Security guard', 'Lifeguard', 'Park ranger', 'Zookeeper', 'Pilot', 'Flight attendant',
+  'Sailor', 'Captain', 'Train driver', 'Taxi driver', 'Truck driver', 'Delivery driver', 'Tour guide',
+  'Travel agent', 'Pastry chef', 'Butcher', 'Waiter', 'Bartender', 'Hotel manager', 'Receptionist',
+  'Cashier', 'Hairdresser', 'Barber', 'Makeup artist', 'Nail artist', 'Event planner', 'Interior designer',
+  'Jeweller', 'Electrician', 'Plumber', 'Builder', 'Welder', 'Locksmith', 'Blacksmith', 'Cleaner', 'Nanny',
+  'Dog walker', 'Landscaper',
 ] as const;
 export type Job = (typeof JOBS)[number];
 

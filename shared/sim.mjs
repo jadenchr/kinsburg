@@ -25,9 +25,9 @@ export const INCIDENT_KINDS = Object.keys(INCIDENTS);
 
 /** Stats and the jobs that hold them up, with the share of residents a fully staffed town has. */
 export const STAT_JOBS = {
-  health: { jobs: ['Doctor', 'Nurse'], share: 0.08 },
-  safety: { jobs: ['Police officer', 'Firefighter'], share: 0.08 },
-  education: { jobs: ['Teacher', 'Librarian'], share: 0.06 },
+  health: { jobs: ['Doctor', 'Nurse', 'Surgeon', 'Paramedic', 'Midwife'], share: 0.08 },
+  safety: { jobs: ['Police officer', 'Firefighter', 'Detective', 'Security guard', 'Lifeguard'], share: 0.08 },
+  education: { jobs: ['Teacher', 'Librarian', 'Professor', 'Principal', 'Tutor'], share: 0.06 },
 };
 export const STATS = ['health', 'safety', 'education', 'happiness'];
 
