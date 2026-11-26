@@ -272,7 +272,7 @@ function compute(data: CityData): Sites {
  * square, then open ground, then the rest; earlier chunks first within a tier) among the chunks
  * that existed when it was built (its `pop`, the highest resident number then). That depends only
  * on numbers stored with the builds, so a build never moves when the city grows. A build without
- * a pop (demo data) uses today's city. RESIDENTIAL_ONLY kinds (universities) skip the centre chunk
+ * a pop (demo data) uses today's city. RESIDENTIAL_ONLY kinds (universities, stadiums) skip the centre chunk
  * and the town square and go to the best spot in a neighbourhood.
  */
 export function assignBuildSites(sites: Sites, builds: { id: number; pop?: number | null; kind?: string }[]): Map<number, Spot> {

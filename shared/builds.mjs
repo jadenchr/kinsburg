@@ -42,8 +42,9 @@ export const BUILDS = [
   { kind: 'herotower', label: 'Kinsburg Tower', emoji: '🌟', words: ['avengers tower', 'avenger tower', 'stark tower', 'hero tower', 'kinsburg tower', 'avengers'] },
 ];
 
-/** Kinds that belong in the neighbourhoods, never in the centre (src/city/sites.ts assignBuildSites). */
-export const RESIDENTIAL_ONLY = ['university'];
+/** Kinds that belong in the neighbourhoods, never in the centre chunk or on the town square
+ *  (src/city/sites.ts assignBuildSites): big campuses and venues. */
+export const RESIDENTIAL_ONLY = ['university', 'stadium'];
 export const BUILD_KINDS = BUILDS.map((b) => b.kind);
 export const BUILD_BY_KIND = Object.fromEntries(BUILDS.map((b) => [b.kind, b]));
 
